@@ -193,7 +193,18 @@ This document tracks potential features, improvements, and ideas for dclaude. No
     docker stop test-srv &>/dev/null
     ```
   - Cache the result in `~/.dclaude/network-mode`
-  - Fall back to bridge mode if any test fails
+  - Fall back to bridge mode if any test fails with clear warning:
+    ```
+    ⚠ Using bridge networking mode on darwin
+    ℹ Bridge mode limitations:
+      - Cannot access services on localhost (use host.docker.internal instead)
+      - Cannot access other containers via localhost
+      - Port mapping required for container services
+
+    For better localhost access, consider:
+      - macOS: Enable host networking in Docker Desktop (beta) or use OrbStack
+      - Windows: Enable host networking in Docker Desktop (beta feature)
+    ```
   - Add `--force-bridge` and `--force-host` flags to override detection
   - Environment variable: `DCLAUDE_NETWORK=host|bridge|auto` (default: auto)
 - **Benefits**:

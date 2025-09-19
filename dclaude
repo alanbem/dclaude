@@ -274,7 +274,15 @@ main() {
                 ;;
             darwin|windows)
                 network_mode="bridge"
-                warning "Host networking not available on $platform, using bridge mode"
+                warning "Using bridge networking mode on $platform"
+                info "Bridge mode limitations:"
+                info "  - Cannot access services on localhost (use host.docker.internal instead)"
+                info "  - Cannot access other containers via localhost"
+                info "  - Port mapping required for container services"
+                info ""
+                info "For better localhost access, consider:"
+                info "  - macOS: Enable host networking in Docker Desktop (beta) or use OrbStack"
+                info "  - Windows: Enable host networking in Docker Desktop (beta feature)"
                 ;;
             *)
                 network_mode="bridge"
