@@ -40,6 +40,10 @@ This document tracks potential features, improvements, and ideas for dclaude. No
   - Platform detection for paths:
     - Linux/macOS: `~/.ssh`, `~/.config/`, `~/.docker/`
     - Windows: `%USERPROFILE%\.ssh`, `%APPDATA%\`, `%USERPROFILE%\.docker\`
+  - Additional tool configs to consider:
+    - `~/.aws` → `/home/claude/.aws` (AWS credentials and config)
+    - `~/.kube` → `/home/claude/.kube` (Kubernetes configs)
+    - `~/.gcloud` → `/home/claude/.gcloud` (Google Cloud config)
   - Add `gh` CLI to Dockerfile when config mounting is enabled
   - Optional via environment variable (DCLAUDE_MOUNT_CONFIGS=true)
 - **Tool Integration**:
@@ -52,6 +56,61 @@ This document tracks potential features, improvements, and ideas for dclaude. No
   - All mounts should be read-only
   - Document which configs are being shared
 - **Complexity**: Low-Medium
+
+### Enhanced Developer Tools Bundle
+- **Description**: Pre-install commonly used development tools in the container
+- **Use Case**: Developers can use familiar tools without installation during each session
+- **Tool Categories**:
+  - **Version Control & Git Tools**:
+    - `gh` - GitHub CLI for PR/issue management
+    - `glab` - GitLab CLI
+    - `tig` - Text-mode interface for git
+    - `git-flow` - Git branching model tools
+  - **Cloud Provider CLIs**:
+    - `aws` CLI - AWS services management
+    - `gcloud` - Google Cloud Platform
+    - `az` - Azure CLI
+    - `doctl` - DigitalOcean CLI
+  - **Container & Orchestration**:
+    - `kubectl` - Kubernetes control
+    - `helm` - Kubernetes package manager
+    - `k9s` - Kubernetes TUI
+    - `podman` - Alternative container runtime
+    - `buildah` - Container image builder
+  - **Development Utilities**:
+    - `jq` - JSON processor (already included)
+    - `yq` - YAML processor
+    - `httpie` - Modern HTTP client
+    - `fzf` - Fuzzy finder
+    - `ripgrep` - Fast grep alternative
+    - `fd` - Fast find alternative
+    - `bat` - Better cat with syntax highlighting
+    - `exa`/`eza` - Modern ls replacement
+  - **Database Clients**:
+    - `psql` - PostgreSQL client
+    - `mysql` - MySQL client
+    - `mongosh` - MongoDB shell
+    - `redis-cli` - Redis client
+  - **Language-Specific Tools**:
+    - `nvm` - Node Version Manager
+    - `pyenv` - Python Version Manager
+    - `poetry` - Python dependency management
+    - `cargo` - Rust package manager (if Rust needed)
+  - **Monitoring & Debugging**:
+    - `htop` - Process viewer
+    - `ncdu` - Disk usage analyzer
+    - `lazydocker` - Docker TUI
+    - `dive` - Docker image explorer
+- **Implementation Ideas**:
+  - Create variants: minimal, standard, full
+  - Use multi-stage Dockerfile to keep size manageable
+  - Environment variable to select tool bundle (DCLAUDE_TOOLS=minimal|standard|full)
+  - Document which tools are available in each bundle
+- **Considerations**:
+  - Image size impact (some CLIs are large)
+  - Update frequency for security patches
+  - License compatibility
+- **Complexity**: Medium
 
 ### Dedicated Workspace Directory
 - **Description**: Create a persistent dclaude workspace directory for project files
