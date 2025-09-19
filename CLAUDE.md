@@ -94,3 +94,41 @@ docker ps
 - Docker socket mount grants significant privileges (only when available)
 - Non-root `claude` user with docker group membership
 - Platform-specific network mode (host on Linux, bridge on Mac/Windows)
+
+## Task Management Workflow
+
+### Starting a New Task
+When beginning a new task or project:
+
+1. **Check for existing TASK.md**:
+   - If `TASK.md` exists with a completed task, back it up first:
+     ```bash
+     mv TASK.md "TASK-$(date +%Y%m%d)-description.md.backup"
+     ```
+
+2. **Create new TASK.md from template**:
+   ```bash
+   cp TASK.md.dist TASK.md
+   ```
+
+3. **Customize the template**:
+   - Fill in project name, dates, and objectives
+   - Add/remove/reorder phases as needed
+   - Update success criteria and requirements
+
+4. **Follow the development process**:
+   - Each phase must include implementation → review → fix cycles
+   - Minimum 2 review iterations, maximum 10
+   - Track all review cycles in the tables provided
+
+### Managing Task Files
+- `TASK.md.dist`: Template file, kept in version control
+- `TASK.md`: Active task file, ignored by git for privacy
+- `TASK-*.md.backup`: Archived completed tasks, ignored by git
+
+### Best Practices
+- Always start with research phase for complex tasks
+- Document decisions and rationale as you work
+- Update progress daily during active development
+- Keep review feedback and fixes documented
+- Archive completed tasks for future reference

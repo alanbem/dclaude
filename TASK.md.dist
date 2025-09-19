@@ -49,6 +49,37 @@ When running review agents, always provide:
 
 ## Development Phases
 
+> **Note**: Phases below are examples. Feel free to:
+> - Add new phases as needed
+> - Remove phases that don't apply
+> - Reorder phases to match your workflow
+> - Extend any phase with additional sections
+> - Common phases: Research, Design, Implementation, Testing, Documentation, Deployment
+
+### Phase 0: Research & Analysis
+**Status**: [ Not Started | In Progress | In Review | Complete ]
+**Target**: [YYYY-MM-DD]
+
+#### Research Goals:
+- [ ] Understand existing codebase/system
+- [ ] Identify technical requirements
+- [ ] Research available solutions/libraries
+- [ ] Analyze potential approaches
+- [ ] Document findings and recommendations
+
+#### Key Questions:
+- [Question 1]?
+- [Question 2]?
+- [Question 3]?
+
+#### Research Deliverables:
+- Technical analysis document
+- Recommended approach with rationale
+- List of dependencies/requirements
+- Risk assessment
+
+---
+
 ### Phase 1: [Phase Name]
 **Status**: [ Not Started | In Progress | In Review | Complete ]
 **Target**: [YYYY-MM-DD]
