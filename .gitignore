@@ -50,9 +50,6 @@ temp/
 dist/
 build/
 
-# Project-specific task tracking
-TASK.md
-
 # Tasks directory (except template and docs)
 tasks/*
 !tasks/_TASK.md

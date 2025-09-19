@@ -3,9 +3,10 @@
 ## Task Management Workflow
 
 ### Starting a New Task
-1. Copy the template: `cp tasks/_TASK.md TASK.md` (in project root)
-2. Fill in project details, objectives, and phases
-3. Work through each phase following the review cycle requirements
+1. Copy the template: `cp tasks/_TASK.md tasks/TASK.md`
+2. Work in `tasks/TASK.md` as the active task file
+3. Fill in project details, objectives, and phases
+4. Work through each phase following the review cycle requirements
 
 ### Review Cycle Requirements
 - **Minimum**: 2 review cycles per phase (initial + verification)
@@ -21,7 +22,7 @@
 
 ### Completing a Task
 1. Ensure all phases are complete with passing reviews
-2. Move completed TASK.md to `tasks/XXX-short-description.md`
+2. Move completed `tasks/TASK.md` to `tasks/XXX-short-description.md`
    - XXX = three-digit order number (001, 002, etc.)
    - short-description = brief kebab-case description
 3. Update the archive table below
@@ -34,6 +35,7 @@
 
 ## Task Template Location
 - Template: `tasks/_TASK.md`
+- Active task: `tasks/TASK.md` (gitignored)
 - Use this template for all new feature development tasks
 
 ## Review Agent Commands

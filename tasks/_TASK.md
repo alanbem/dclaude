@@ -185,6 +185,7 @@ When running review agents, always provide:
 - [ ] Installation guide
 - [ ] Troubleshooting guide
 - [ ] Release notes
+- [ ] **Remove feature from FEATURES.md** (if implementing from there)
 - [ ] Documentation review
 - [ ] Fix documentation issues
 - [ ] Final documentation verification
@@ -192,6 +193,7 @@ When running review agents, always provide:
 #### Release Checklist:
 - [ ] All tests passing
 - [ ] Documentation complete
+- [ ] FEATURES.md updated (feature removed if implemented)
 - [ ] Security review passed
 - [ ] Performance benchmarks met
 - [ ] Changelog updated
