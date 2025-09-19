@@ -1,10 +1,12 @@
 # Dockerized Claude Code
 
-[![Docker Hub](https://img.shields.io/docker/v/alanbem/claude-code?label=Docker%20Hub)](https://hub.docker.com/r/alanbem/claude-code)
-[![npm version](https://img.shields.io/npm/v/@alanbem/dclaude)](https://www.npmjs.com/package/@alanbem/dclaude)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![Status: Development](https://img.shields.io/badge/Status-Development-yellow)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue)](https://www.docker.com/)
 
 Run Claude Code CLI in a Docker container with full MCP (Model Context Protocol) support and host environment emulation.
+
+> **🚧 Development Status**: This project is in active development. NPM and Docker Hub publishing coming soon. Currently requires local building.
 
 ## Features
 
@@ -16,27 +18,46 @@ Run Claude Code CLI in a Docker container with full MCP (Model Context Protocol)
 - 🌍 **Cross-Platform**: Works on Linux, macOS, and Windows (with Docker)
 - 🚀 **Auto-Updates**: Automatic image updates on launch
 
+## Prerequisites
+
+- Docker Desktop installed and running (Docker Engine 20.10+ recommended)
+- Git (for cloning the repository)
+- Claude API key (from [Anthropic Console](https://console.anthropic.com/))
+
 ## Quick Start
 
-### Option 1: Install via NPM (Recommended)
+### Option 1: Build Locally (Currently Required)
 
 ```bash
-npm install -g @alanbem/dclaude
-dclaude --help
+# Clone the repository
+git clone https://github.com/alanbem/dockerized-claude-code.git
+cd dockerized-claude-code
+
+# Build the Docker image
+docker build -t alanbem/claude-code:latest .
+
+# Make the launcher script executable
+chmod +x dclaude
+
+# Run dclaude
+./dclaude --help
+
+# (Optional) Install globally
+sudo cp dclaude /usr/local/bin/
 ```
 
-### Option 2: Direct Download
+### Option 2: Install via NPM (Coming Soon)
 
 ```bash
-# Download the launcher script
-curl -fsSL https://raw.githubusercontent.com/alanbem/dockerized-claude-code/main/dclaude -o dclaude
-chmod +x dclaude
-./dclaude --help
+# Note: Package will be published to NPM registry soon
+npm install -g @alanbem/dclaude
+dclaude --help
 ```
 
 ### Option 3: Use Docker Directly
 
 ```bash
+# After building the image locally
 docker run --rm -it \
   -v "$(pwd):$(pwd)" \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -64,6 +85,101 @@ dclaude --update
 # Enable debug mode
 DCLAUDE_DEBUG=true dclaude
 ```
+
+### How dclaude Works
+
+#### Host Emulation
+dclaude creates a containerized environment that closely emulates your host system:
+
+1. **Path Mirroring**: Your current directory is mounted at the exact same path inside the container
+   - If you're in `/Users/alice/projects/myapp` on the host
+   - Claude sees and works in `/Users/alice/projects/myapp` inside the container
+   - This preserves all relative and absolute path references
+
+2. **Docker Access**: The container can control Docker on your host
+   - Docker socket (`/var/run/docker.sock`) is mounted into the container
+   - Claude can build images, run containers, and manage Docker Compose stacks
+   - Example: `dclaude "build and run the Dockerfile in this directory"`
+
+3. **Network Emulation**:
+   - Linux: Uses host networking (container shares host's network stack)
+   - macOS/Windows: Uses bridge networking (some limitations apply)
+   - Claude can access localhost services as if running directly on your host
+
+4. **Persistent Data**: Configuration and cache stored in Docker volumes
+   - `dclaude-config`: Configuration files
+   - `dclaude-cache`: Cache data
+   - `dclaude-claude`: Claude-specific data
+   - Data persists between container restarts
+
+#### Path Mirroring Explained
+
+The path mirroring system ensures seamless file access:
+
+```bash
+# Example: You're working on a project
+cd /Users/alice/projects/website
+dclaude "review index.html"
+
+# What happens:
+# 1. dclaude detects your current path: /Users/alice/projects/website
+# 2. Mounts this directory at the same path in container
+# 3. Sets container's working directory to /Users/alice/projects/website
+# 4. Claude can access all files as if running natively
+```
+
+This means:
+- All file paths work exactly as expected
+- No need to translate paths between host and container
+- Git commands work normally (sees correct paths)
+- Build tools find dependencies in expected locations
+
+#### Docker Host Access
+
+dclaude can manage Docker on your host system:
+
+```bash
+# Claude can see your running containers
+dclaude "list all running Docker containers"
+
+# Claude can build and run Docker images
+dclaude "create a Dockerfile for this Node.js app and run it"
+
+# Claude can manage Docker Compose
+dclaude "bring up the docker-compose stack and check for errors"
+
+# Claude can debug container issues
+dclaude "why is my nginx container failing to start?"
+```
+
+**Security Note**: Docker socket access grants significant privileges. Only use in trusted environments.
+
+### Authentication Setup
+
+To use Claude CLI, you need to authenticate:
+
+1. Run dclaude for the first time:
+   ```bash
+   dclaude
+   ```
+
+2. When prompted, use the `/login` command to authenticate with your API key
+
+3. Your credentials are securely stored in the `dclaude-claude` Docker volume and persist between sessions
+
+### Network Access Details
+
+#### Linux
+- Uses **host networking**: Full access to localhost services
+- Services on `localhost:PORT` work directly
+- No network isolation from host
+
+#### macOS/Windows
+- Uses **bridge networking** with these limitations:
+  - Access host services via `host.docker.internal` instead of `localhost`
+  - Example: `http://host.docker.internal:8080` instead of `http://localhost:8080`
+  - Some UDP services may not be accessible
+  - Container has its own network namespace
 
 ### Environment Variables
 
@@ -130,26 +246,43 @@ DCLAUDE_TAG=local ./dclaude
 
 ### Docker not found
 ```bash
-# Install Docker first
+# Install Docker Desktop (macOS/Windows) or Docker Engine (Linux)
 # Visit: https://docs.docker.com/get-docker/
 ```
 
 ### Permission denied on Docker socket
 ```bash
-# Add your user to the docker group (Linux)
+# Linux: Add your user to the docker group
 sudo usermod -aG docker $USER
 # Then logout and login again
+
+# macOS/Windows: Ensure Docker Desktop is running
 ```
 
-### Claude command not responding
+### Image not found / Pull failed
 ```bash
-# Check if Docker is running
-docker info
+# Build the image locally first
+docker build -t alanbem/claude-code:latest .
+```
 
-# Update the image
-dclaude --update
+### Claude authentication issues
+```bash
+# Run dclaude and use /login command
+dclaude
+# Then at the Claude prompt:
+/login
+# Follow the authentication prompts
+```
 
-# Enable debug mode
+### Network access issues on macOS/Windows
+```bash
+# Use host.docker.internal instead of localhost
+# Example: http://host.docker.internal:8080
+```
+
+### Debug mode for troubleshooting
+```bash
+# Enable verbose output to diagnose issues
 DCLAUDE_DEBUG=true dclaude
 ```
 

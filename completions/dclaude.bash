@@ -26,4 +26,7 @@ _dclaude_completions() {
     esac
 }
 
-complete -F _dclaude_completions dclaude
+# Only set completion if complete command is available
+if command -v complete &> /dev/null; then
+    complete -F _dclaude_completions dclaude
+fi

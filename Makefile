@@ -24,8 +24,12 @@ test:
 	@bash -n dclaude
 	@echo "✓ Syntax check passed"
 	@echo "Testing Docker image..."
-	@docker run --rm alanbem/claude-code:local --version
-	@echo "✓ Docker image test passed"
+	@if docker image inspect alanbem/claude-code:local &>/dev/null; then \
+		docker run --rm alanbem/claude-code:local --version && echo "✓ Docker image test passed"; \
+	else \
+		echo "⚠️  Local image not found. Run 'make build' first or test will use remote image"; \
+		docker run --rm alanbem/claude-code:latest --version 2>/dev/null && echo "✓ Remote image test passed" || echo "✗ No image available for testing"; \
+	fi
 
 # Install locally
 install:

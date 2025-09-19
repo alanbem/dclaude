@@ -4,10 +4,18 @@
 
 set -euo pipefail
 
-# Load configuration file if exists
-if [[ -f "${HOME}/.dclaude/config" ]]; then
-    # shellcheck source=/dev/null
-    source "${HOME}/.dclaude/config"
+# Load configuration file if exists (with validation)
+CONFIG_FILE="${HOME}/.dclaude/config"
+if [[ -f "$CONFIG_FILE" ]]; then
+    # Validate config file is readable and not world-writable
+    if [[ -r "$CONFIG_FILE" ]]; then
+        if [[ -w "$CONFIG_FILE" ]] && [[ "$(stat -c %a "$CONFIG_FILE" 2>/dev/null || stat -f %A "$CONFIG_FILE" 2>/dev/null)" =~ [2367]$ ]]; then
+            echo "Warning: Config file is world-writable, skipping for security" >&2
+        else
+            # shellcheck source=/dev/null
+            source "$CONFIG_FILE"
+        fi
+    fi
 fi
 
 # Configuration
