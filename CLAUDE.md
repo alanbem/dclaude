@@ -53,9 +53,7 @@ The `detect_network_capability()` function implements a sophisticated testing ap
 ## Development Workflow
 
 ### Task Management
-1. For new tasks: `cp TASK.md.dist TASK.md`
-2. For completed tasks: `mv TASK.md "TASK-$(date +%Y%m%d)-description.md.backup"`
-3. Follow review cycles: implementation → review → fix (min 2 cycles, max 10)
+See [tasks/CLAUDE.md](tasks/CLAUDE.md) for complete task management workflow, review requirements, and completed tasks archive.
 
 ### Testing Commands
 ```bash
@@ -102,6 +100,7 @@ make verify                    # Run installation verification
 
 ## References
 - Full user documentation: See README.md
-- Template for new tasks: TASK.md.dist
+- Task management: See tasks/CLAUDE.md
+- Task template: tasks/_TASK.md
 - Build automation: Makefile
 - CI/CD: .github/workflows/

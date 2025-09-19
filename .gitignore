@@ -52,4 +52,8 @@ build/
 
 # Project-specific task tracking
 TASK.md
-TASK-*.md.backup
+
+# Tasks directory (except template and docs)
+tasks/*
+!tasks/_TASK.md
+!tasks/CLAUDE.md
