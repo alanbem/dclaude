@@ -65,15 +65,33 @@ This document tracks potential features, improvements, and ideas for dclaude. No
   **Near Future (Priority)**:
   - **GitHub Integration**:
     - `gh` - GitHub CLI for PR/issue management
-  - **Development Utilities**:
-    - `jq` - JSON processor (already included)
-    - `yq` - YAML processor
-    - `httpie` - Modern HTTP client
-    - `fzf` - Fuzzy finder
-    - `ripgrep` - Fast grep alternative
-    - `fd` - Fast find alternative
-    - `bat` - Better cat with syntax highlighting
-    - `eza` - Modern ls replacement
+  - **Development Utilities** (AI-friendly tools):
+    - `jq` - JSON processor (already included) - parse API responses, configs
+    - `yq` - YAML processor - manipulate k8s manifests, configs
+    - `httpie` - Modern HTTP client - test APIs with readable syntax
+    - `fzf` - Fuzzy finder - interactive selection from lists
+    - `ripgrep` (`rg`) - Fast grep - search codebases efficiently
+    - `fd` - Fast find alternative - locate files quickly
+    - `bat` - Better cat with syntax highlighting - show code with context
+    - `eza` - Modern ls replacement - understand directory structures
+    - `tree` - Directory tree visualization - show project structure
+    - `tldr` - Simplified man pages - quick command examples
+    - `cheat` - Interactive cheatsheets - command snippets
+    - `glow` - Markdown renderer in terminal - render docs beautifully
+    - `mdcat` - Another markdown renderer with images
+    - `pandoc` - Universal document converter - transform between formats
+    - `entr` - Run commands on file change - automation helper
+    - `watchexec` - Similar to entr but more features
+    - `just` - Command runner (like make but simpler) - task automation
+    - `sd` - Intuitive find & replace - better than sed for Claude
+    - `delta` - Better git diff - understand code changes
+    - `difftastic` - Structural diff - language-aware diffs
+    - `tokei` - Code statistics - analyze project composition
+    - `scc` - Code counter with complexity - understand codebases
+    - `gron` - Make JSON greppable - flatten JSON for processing
+    - `xsv` - CSV data manipulation - process data files
+    - `miller` - Like awk/sed for CSV/JSON - data transformation
+    - `visidata` - Terminal spreadsheet - explore data interactively
   - **Cloud Provider CLIs**:
     - `aws` CLI - AWS services management
     - `gcloud` - Google Cloud Platform
@@ -106,6 +124,15 @@ This document tracks potential features, improvements, and ideas for dclaude. No
     - `ncdu` - Disk usage analyzer
     - `lazydocker` - Docker TUI
     - `dive` - Docker image explorer
+
+- **Why These Tools Are Great for AI**:
+  - **Structured Output**: Tools like `jq`, `yq`, `gron` give predictable, parseable output
+  - **Fast Search**: `ripgrep`, `fd` are orders of magnitude faster than traditional tools
+  - **Better Context**: `bat`, `delta`, `difftastic` provide syntax highlighting and context
+  - **Documentation**: `tldr`, `cheat` provide concise examples Claude can learn from
+  - **Automation**: `entr`, `watchexec`, `just` enable Claude to set up workflows
+  - **Data Processing**: `xsv`, `miller`, `visidata` let Claude analyze data efficiently
+  - **Code Understanding**: `tokei`, `scc` help Claude understand project scale/complexity
 
 - **Implementation Approach**:
   - Install all tools in single image (you're the main user)
