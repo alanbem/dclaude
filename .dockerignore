@@ -1,0 +1,43 @@
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+LICENSE
+TASK.md
+CLAUDE.md
+
+# Docker files
+docker-compose.yml
+docker-compose.yml.old
+docker/
+
+# Development files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Node (for npm package development)
+node_modules/
+npm-debug.log*
+
+# CI/CD
+.github/
+
+# Local testing
+bin/
+dclaude
+
+# Temporary files
+*.tmp
+*.bak
+*.old
+
+# Environment files
+.env
+.env.*
