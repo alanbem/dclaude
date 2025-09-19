@@ -19,7 +19,7 @@ AI assistant guidance for working with the dclaude (Dockerized Claude Code) proj
 ### Host Integration Features
 1. **Docker socket mounting** (`/var/run/docker.sock`) - enables container management from within
 2. **Path mirroring** - current directory mounted at same absolute path in container
-3. **Network modes** - `host` on Linux, `bridge` on macOS/Windows for platform compatibility
+3. **Network modes** - `host` on Linux, `bridge` on macOS/Windows (future: auto-detect host support)
 
 ## Development Workflow
 

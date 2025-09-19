@@ -161,6 +161,32 @@ This document tracks potential features, improvements, and ideas for dclaude. No
     - `~/dclaude/shared/` - shared resources
 - **Complexity**: Low
 
+### Smart Host Networking Detection
+- **Description**: Auto-detect and use host networking when available on all platforms
+- **Use Case**: Better localhost access for development on macOS/Windows
+- **Current Situation**:
+  - Linux: Host networking works natively
+  - macOS: Docker Desktop beta feature or OrbStack supports it
+  - Windows: Docker Desktop beta feature may support it
+- **Implementation Ideas**:
+  - Test host networking capability on startup:
+    ```bash
+    # Quick test: run container with host network and check localhost access
+    docker run --rm -d --network host --name test-host alpine sleep 2
+    # Try to access a localhost port or check network interfaces
+    docker exec test-host wget -q -O- http://localhost:80 2>/dev/null && echo "host networking works"
+    docker rm -f test-host 2>/dev/null
+    ```
+  - Cache the result for future runs (in a dotfile or env var)
+  - Fall back to bridge mode if host networking fails
+  - Add `--force-bridge` and `--force-host` flags to override detection
+- **Benefits**:
+  - Seamless localhost access on all platforms
+  - No more port mapping hassles
+  - Better performance for network operations
+  - Works automatically with OrbStack
+- **Complexity**: Low-Medium
+
 ## Ideas & Considerations
 
 ### Container Access Improvements
