@@ -17,6 +17,7 @@ Run Claude Code CLI in a Docker container with full MCP (Model Context Protocol)
 - 🔒 **Isolated Environment**: Persistent data in Docker volumes
 - 🌍 **Cross-Platform**: Works on Linux, macOS, and Windows (with Docker)
 - 🚀 **Auto-Updates**: Automatic image updates on launch
+- 🌐 **Smart Networking**: Auto-detects optimal networking mode for localhost access
 
 ## Prerequisites
 
@@ -84,6 +85,10 @@ dclaude --update
 
 # Enable debug mode
 DCLAUDE_DEBUG=true dclaude
+
+# Force specific networking modes
+dclaude --force-host    # Full localhost access
+dclaude --force-bridge  # Limited localhost access
 ```
 
 ### How dclaude Works
@@ -101,10 +106,12 @@ dclaude creates a containerized environment that closely emulates your host syst
    - Claude can build images, run containers, and manage Docker Compose stacks
    - Example: `dclaude "build and run the Dockerfile in this directory"`
 
-3. **Network Emulation**:
-   - Linux: Uses host networking (container shares host's network stack)
-   - macOS/Windows: Uses bridge networking (some limitations apply)
-   - Claude can access localhost services as if running directly on your host
+3. **Smart Network Detection**:
+   - **Auto-Detection**: Automatically determines the best networking mode
+   - **Host Mode**: Full localhost access when platform supports it
+   - **Bridge Mode**: Fallback with limited localhost access
+   - **Caching**: Network capability cached for 24 hours for faster startup
+   - **Override Options**: Command-line flags to force specific modes
 
 4. **Persistent Data**: Configuration and cache stored in Docker volumes
    - `dclaude-config`: Configuration files
@@ -173,29 +180,112 @@ To use Claude CLI, you need to authenticate:
 
 3. Your credentials are securely stored in the `dclaude-claude` Docker volume and persist between sessions
 
-### Network Access Details
+### Networking Modes
 
-#### Linux
-- Uses **host networking**: Full access to localhost services
-- Services on `localhost:PORT` work directly
-- No network isolation from host
+dclaude automatically detects the best available networking mode for your platform, providing seamless localhost access when possible.
 
-#### macOS/Windows
-- Uses **bridge networking** with these limitations:
-  - Access host services via `host.docker.internal` instead of `localhost`
-  - Example: `http://host.docker.internal:8080` instead of `http://localhost:8080`
-  - Some UDP services may not be accessible
-  - Container has its own network namespace
+#### Auto-Detection Process
+
+1. **Platform Detection**: Identifies your operating system
+2. **Capability Testing**: Tests host networking support with ephemeral containers
+3. **Caching**: Stores results for 24 hours to speed up future launches
+4. **Fallback**: Uses bridge mode if host networking isn't available
+
+#### Host Networking Mode
+
+**When Available**: Linux (native), macOS (Docker Desktop beta/OrbStack), Windows (Docker Desktop beta)
+
+**Benefits**:
+- 🌐 Direct access to `localhost:PORT` services
+- 🔗 Container-to-container communication via localhost
+- ⚡ Better network performance
+- 🎯 No port mapping required
+- 📡 Full network stack sharing with host
+
+**Example Use Cases**:
+```bash
+# Access your development database
+dclaude "connect to the PostgreSQL database on localhost:5432"
+
+# Test your web application
+dclaude "check the API endpoints at localhost:3000"
+
+# Debug microservices
+dclaude "analyze the logs from the service running on localhost:8080"
+```
+
+#### Bridge Networking Mode
+
+**When Used**: Fallback when host networking isn't supported
+
+**Limitations**:
+- ❌ Cannot access `localhost` services directly
+- 🔄 Must use `host.docker.internal` instead of `localhost`
+- 📦 Container has isolated network namespace
+- 🚧 Some UDP services may not be accessible
+
+**Workarounds**:
+```bash
+# Instead of localhost:8080, use:
+host.docker.internal:8080
+
+# Example for accessing host services:
+dclaude "test the API at http://host.docker.internal:3000"
+```
+
+#### Command-Line Control
+
+You can override auto-detection with command-line flags:
+
+```bash
+# Force host networking (full localhost access)
+dclaude --force-host "test localhost:3000"
+
+# Force bridge networking (isolated mode)
+dclaude --force-bridge "safer isolated development"
+
+# Use auto-detection (default)
+dclaude "let dclaude choose the best mode"
+```
+
+#### Environment Variable Control
+
+```bash
+# Set networking mode via environment variable
+DCLAUDE_NETWORK=host dclaude
+DCLAUDE_NETWORK=bridge dclaude
+DCLAUDE_NETWORK=auto dclaude  # default
+```
+
+#### Platform-Specific Notes
+
+**Linux**:
+- Host networking works natively
+- Full localhost access available
+- No special configuration required
+
+**macOS**:
+- Host networking available with:
+  - Docker Desktop with host networking beta feature enabled
+  - OrbStack (recommended Docker Desktop alternative)
+- Bridge mode fallback for standard Docker Desktop
+- Check `dclaude --debug` output for detection results
+
+**Windows**:
+- Host networking available with Docker Desktop beta features
+- WSL2 may provide additional networking capabilities
+- Bridge mode fallback for standard configurations
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DCLAUDE_TAG` | Docker image tag to use | `latest` |
-| `DCLAUDE_DEBUG` | Enable debug output | `false` |
-| `DCLAUDE_DOCKER_SOCKET` | Docker socket path | `/var/run/docker.sock` |
-| `DCLAUDE_NETWORK` | Network mode | `host` (Linux), `bridge` (Mac/Windows) |
-| `CLAUDE_MODEL` | Claude model to use | (Claude's default) |
+| Variable | Description | Default | Values |
+|----------|-------------|---------|--------|
+| `DCLAUDE_TAG` | Docker image tag to use | `latest` | Any valid tag |
+| `DCLAUDE_DEBUG` | Enable debug output | `false` | `true`, `false` |
+| `DCLAUDE_DOCKER_SOCKET` | Docker socket path | `/var/run/docker.sock` | Valid socket path |
+| `DCLAUDE_NETWORK` | Network mode | `auto` | `auto`, `host`, `bridge` |
+| `DCLAUDE_REGISTRY` | Docker registry | `docker.io` | Registry URL |
+| `CLAUDE_MODEL` | Claude model to use | (Claude's default) | Model name |
 
 ### Docker Socket Access
 
@@ -281,10 +371,40 @@ dclaude
 # Follow the authentication prompts
 ```
 
-### Network access issues on macOS/Windows
+### Network access issues
+
+**Can't access localhost services**:
 ```bash
-# Use host.docker.internal instead of localhost
-# Example: http://host.docker.internal:8080
+# Check current networking mode
+DCLAUDE_DEBUG=true dclaude
+
+# Try forcing host mode (if supported)
+dclaude --force-host
+
+# On macOS: Enable host networking in Docker Desktop or use OrbStack
+# On Windows: Enable host networking beta feature in Docker Desktop
+
+# Fallback: Use bridge mode with host.docker.internal
+dclaude --force-bridge
+# Then access services via host.docker.internal:PORT
+```
+
+**Slow startup or networking detection**:
+```bash
+# Clear network detection cache
+rm ~/.dclaude/network-mode
+
+# Run with debug to see detection process
+DCLAUDE_DEBUG=true dclaude
+```
+
+**Force specific networking mode**:
+```bash
+# Always use host networking
+echo 'DCLAUDE_NETWORK=host' >> ~/.dclaude/config
+
+# Always use bridge networking
+echo 'DCLAUDE_NETWORK=bridge' >> ~/.dclaude/config
 ```
 
 ### Debug mode for troubleshooting

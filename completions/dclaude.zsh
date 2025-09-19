@@ -11,6 +11,8 @@ _dclaude() {
         '--version[Show version information]'
         '--update[Force update the Docker image]'
         '--debug[Run with debug output]'
+        '--force-host[Force use of host networking mode]'
+        '--force-bridge[Force use of bridge networking mode]'
     )
 
     _arguments -C \
@@ -33,6 +35,8 @@ _dclaude_commands() {
         '--version:Show version information'
         '--update:Update Docker image'
         '--debug:Enable debug mode'
+        '--force-host:Force host networking mode'
+        '--force-bridge:Force bridge networking mode'
     )
     _describe 'command' commands
 }

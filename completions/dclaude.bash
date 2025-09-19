@@ -9,7 +9,7 @@ _dclaude_completions() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     # Main options
-    opts="--help --version --update --debug"
+    opts="--help --version --update --debug --force-host --force-bridge"
 
     # Environment variables that can be set
     env_vars="DCLAUDE_TAG= DCLAUDE_DEBUG= DCLAUDE_DOCKER_SOCKET= DCLAUDE_NETWORK="
