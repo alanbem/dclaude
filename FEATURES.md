@@ -29,18 +29,21 @@ This document tracks potential features, improvements, and ideas for dclaude. No
   - No need to regenerate SSH keys or re-authenticate tools
   - Consistent configuration across host and container
   - Git operations and GitHub CLI work immediately
+  - Docker push/pull from private registries works without re-login
 - **Implementation Considerations**:
   - Mount multiple config directories (read-only for security):
     - `~/.ssh` → `/home/claude/.ssh` (SSH keys)
+    - `~/.docker` → `/home/claude/.docker` (Docker registry auth)
     - `~/.config/gh` → `/home/claude/.config/gh` (GitHub CLI auth)
     - `~/.gitconfig` → `/home/claude/.gitconfig` (Git configuration)
     - `~/.npmrc` → `/home/claude/.npmrc` (NPM auth, optional)
   - Platform detection for paths:
-    - Linux/macOS: `~/.ssh`, `~/.config/`
-    - Windows: `%USERPROFILE%\.ssh`, `%APPDATA%\`
-  - Add `gh` CLI to Dockerfile when SSH mounting is enabled
+    - Linux/macOS: `~/.ssh`, `~/.config/`, `~/.docker/`
+    - Windows: `%USERPROFILE%\.ssh`, `%APPDATA%\`, `%USERPROFILE%\.docker\`
+  - Add `gh` CLI to Dockerfile when config mounting is enabled
   - Optional via environment variable (DCLAUDE_MOUNT_CONFIGS=true)
 - **Tool Integration**:
+  - Docker: Uses mounted `~/.docker/config.json` for registry authentication
   - GitHub CLI: Pre-installed, uses mounted auth from `~/.config/gh/`
   - Git: Uses mounted `.gitconfig` and SSH keys
   - NPM: Optional mounting of `.npmrc` for private registries
