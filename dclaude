@@ -101,6 +101,189 @@ check_docker_running() {
     debug "Docker daemon is running"
 }
 
+# Find an available port in the specified range
+find_available_port() {
+    local start_port=${1:-20000}
+    local end_port=${2:-65000}
+    local port
+
+    for ((port=start_port; port<=end_port; port++)); do
+        if ! netstat -ln 2>/dev/null | grep -q ":$port " && ! lsof -i ":$port" &>/dev/null; then
+            echo "$port"
+            return 0
+        fi
+    done
+
+    # Fallback: use a random port if no available port found
+    echo $((20000 + RANDOM % 45000))
+}
+
+# Detect network capability (host vs bridge)
+detect_network_capability() {
+    local cache_dir="${HOME}/.dclaude"
+    local cache_file="${cache_dir}/network-mode"
+    local test_timeout=10
+    local server_container=""
+
+    # Cleanup function for this function's containers
+    cleanup_nettest() {
+        if [[ -n "$server_container" ]]; then
+            debug "Cleaning up test container: $server_container"
+            docker stop "$server_container" &>/dev/null || true
+            docker rm -f "$server_container" &>/dev/null || true
+        fi
+    }
+
+    # Set up trap for cleanup
+    trap cleanup_nettest EXIT
+
+    # Create cache directory if it doesn't exist
+    if [[ ! -d "$cache_dir" ]]; then
+        mkdir -p "$cache_dir" || {
+            debug "Failed to create cache directory, proceeding without cache"
+            cache_file=""
+        }
+    fi
+
+    # Check cache first (valid for 24 hours)
+    if [[ -n "$cache_file" && -f "$cache_file" ]]; then
+        local cache_age
+        if cache_age=$(stat -c %Y "$cache_file" 2>/dev/null) || cache_age=$(stat -f %m "$cache_file" 2>/dev/null); then
+            local current_time
+            current_time=$(date +%s)
+            local age_hours=$(( (current_time - cache_age) / 3600 ))
+
+            if [[ $age_hours -lt 24 ]]; then
+                local cached_mode
+                if cached_mode=$(cat "$cache_file" 2>/dev/null) && [[ "$cached_mode" =~ ^(host|bridge)$ ]]; then
+                    debug "Using cached network mode: $cached_mode (age: ${age_hours}h)"
+                    trap - EXIT
+                    echo "$cached_mode"
+                    return 0
+                fi
+            fi
+        fi
+    fi
+
+    debug "Testing network capabilities..."
+
+    # Ensure alpine:3.19 is available
+    if ! docker image inspect alpine:3.19 &>/dev/null; then
+        debug "Alpine 3.19 image not found, pulling..."
+        if ! docker pull alpine:3.19 &>/dev/null; then
+            debug "Failed to pull alpine:3.19, falling back to bridge mode"
+            trap - EXIT
+            echo "bridge" | tee "$cache_file" 2>/dev/null || echo "bridge"
+            return 0
+        fi
+        debug "Alpine 3.19 image pulled successfully"
+    else
+        debug "Alpine 3.19 image is available"
+    fi
+
+    # Test 1: Basic host networking support
+    debug "Test 1: Basic host networking support"
+    if ! timeout "$test_timeout" docker run --rm --network host alpine:3.19 \
+        sh -c 'ip addr show lo | grep -q "127\.0\.0\.1"' &>/dev/null; then
+        debug "Host networking not supported (basic test failed)"
+        trap - EXIT
+        echo "bridge" | tee "$cache_file" 2>/dev/null || echo "bridge"
+        return 0
+    fi
+
+    # Test 2: Container-to-container localhost access
+    debug "Test 2: Container-to-container localhost access"
+    local test_port
+    test_port=$(find_available_port)
+    debug "Using dynamic port: $test_port"
+    server_container="dclaude-nettest-$$"
+
+    # Start test server
+    if ! docker run --rm -d --name "$server_container" --network host alpine:3.19 \
+        sh -c "echo 'test-response' | nc -l -p $test_port" &>/dev/null; then
+        debug "Failed to start test server"
+        trap - EXIT
+        echo "bridge" | tee "$cache_file" 2>/dev/null || echo "bridge"
+        return 0
+    fi
+
+    # Wait for server to be ready (max 5 seconds)
+    debug "Waiting for test server to be ready..."
+    local ready=false
+    local wait_count=0
+    local max_wait=50  # 5 seconds (50 * 0.1 seconds)
+
+    while [[ $wait_count -lt $max_wait ]]; do
+        if docker exec "$server_container" sh -c "netstat -ln 2>/dev/null | grep -q \":$test_port \"" &>/dev/null; then
+            ready=true
+            debug "Test server is ready after $((wait_count * 100))ms"
+            break
+        fi
+        sleep 0.1
+        ((wait_count++))
+    done
+
+    if [[ "$ready" != "true" ]]; then
+        debug "Test server failed to become ready within 5 seconds"
+        cleanup_nettest
+        trap - EXIT
+        echo "bridge" | tee "$cache_file" 2>/dev/null || echo "bridge"
+        return 0
+    fi
+
+    # Test client connection
+    local test_result="bridge"
+    if timeout 5 docker run --rm --network host alpine:3.19 \
+        sh -c "echo '' | nc localhost $test_port" &>/dev/null; then
+        test_result="host"
+        debug "Host networking fully supported"
+    else
+        debug "Host networking partially supported but localhost access failed"
+    fi
+
+    # Cleanup test server (handled by trap)
+    cleanup_nettest
+
+    # Cache the result
+    if [[ -n "$cache_file" ]]; then
+        echo "$test_result" > "$cache_file" 2>/dev/null || true
+    fi
+
+    # Platform-specific validation of detected mode
+    local platform
+    platform=$(detect_platform)
+    case "$platform" in
+        darwin)
+            if [[ "$test_result" == "host" ]]; then
+                debug "Host networking detected on macOS - validating compatibility"
+                # On macOS, host networking should only work with Docker Desktop beta or OrbStack
+                if ! docker system info 2>/dev/null | grep -qi "orbstack\|desktop.*beta" &>/dev/null; then
+                    debug "Host networking may not work properly on this Docker setup for macOS"
+                    warning "Host networking detected but may not work properly on macOS Docker Desktop (non-beta)"
+                fi
+            fi
+            ;;
+        windows)
+            if [[ "$test_result" == "host" ]]; then
+                debug "Host networking detected on Windows - this is unusual"
+                warning "Host networking detected on Windows - this may indicate WSL2 or special configuration"
+            fi
+            ;;
+        linux)
+            debug "Network mode '$test_result' is expected on Linux platform"
+            ;;
+        *)
+            debug "Unknown platform '$platform' - network mode validation skipped"
+            ;;
+    esac
+
+    # Clear the trap before returning
+    trap - EXIT
+
+    debug "Network capability detection result: $test_result"
+    echo "$test_result"
+}
+
 # Create Docker volumes if they don't exist
 create_volumes() {
     local volumes=("${VOLUME_PREFIX}-config" "${VOLUME_PREFIX}-cache" "${VOLUME_PREFIX}-claude")
@@ -201,7 +384,7 @@ Environment Variables:
     DCLAUDE_TAG           Docker image tag to use (default: latest)
     DCLAUDE_DEBUG         Enable debug output (default: false)
     DCLAUDE_DOCKER_SOCKET Docker socket path (default: /var/run/docker.sock)
-    DCLAUDE_NETWORK       Network mode (default: host on Linux, bridge on Mac/Windows)
+    DCLAUDE_NETWORK       Network mode: host, bridge, or auto-detect (default: auto-detect)
 
 Examples:
     dclaude                    # Start Claude interactively
@@ -265,29 +448,29 @@ main() {
     platform=$(detect_platform)
     debug "Platform detected: $platform"
 
-    # Set network mode based on platform
+    # Set network mode based on auto-detection or user preference
     local network_mode="${DCLAUDE_NETWORK:-}"
     if [[ -z "$network_mode" ]]; then
-        case "$platform" in
-            linux)
-                network_mode="host"
-                ;;
-            darwin|windows)
-                network_mode="bridge"
-                warning "Using bridge networking mode on $platform"
-                info "Bridge mode limitations:"
-                info "  - Cannot access services on localhost (use host.docker.internal instead)"
-                info "  - Cannot access other containers via localhost"
-                info "  - Port mapping required for container services"
-                info ""
-                info "For better localhost access, consider:"
-                info "  - macOS: Enable host networking in Docker Desktop (beta) or use OrbStack"
-                info "  - Windows: Enable host networking in Docker Desktop (beta feature)"
-                ;;
-            *)
-                network_mode="bridge"
-                ;;
-        esac
+        # Auto-detect network capability
+        network_mode=$(detect_network_capability)
+        debug "Auto-detected network mode: $network_mode"
+
+        # Show warning if using bridge mode
+        if [[ "$network_mode" == "bridge" ]]; then
+            warning "Using bridge networking mode on $platform"
+            info "Bridge mode limitations:"
+            info "  - Cannot access services on localhost (use host.docker.internal instead)"
+            info "  - Cannot access other containers via localhost"
+            info "  - Port mapping required for container services"
+            info ""
+            info "For better localhost access, consider:"
+            info "  - macOS: Enable host networking in Docker Desktop (beta) or use OrbStack"
+            info "  - Windows: Enable host networking in Docker Desktop (beta feature)"
+        else
+            debug "Host networking available - full localhost access enabled"
+        fi
+    else
+        debug "Using user-specified network mode: $network_mode"
     fi
     debug "Network mode: $network_mode"
 
