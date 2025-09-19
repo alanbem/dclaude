@@ -8,7 +8,8 @@
   },
   "scripts": {
     "test": "bash -n dclaude && echo 'Syntax check passed'",
-    "postinstall": "echo 'dclaude installed successfully. Run \"dclaude --help\" to get started.'"
+    "postinstall": "echo 'dclaude installed successfully. Run \"dclaude --help\" to get started.'",
+    "verify": "bash scripts/install-verify.sh"
   },
   "repository": {
     "type": "git",

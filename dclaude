@@ -4,8 +4,14 @@
 
 set -euo pipefail
 
+# Load configuration file if exists
+if [[ -f "${HOME}/.dclaude/config" ]]; then
+    # shellcheck source=/dev/null
+    source "${HOME}/.dclaude/config"
+fi
+
 # Configuration
-readonly IMAGE_NAME="alanbem/claude-code"
+readonly IMAGE_NAME="${DCLAUDE_REGISTRY:-docker.io}/alanbem/claude-code"
 readonly IMAGE_TAG="${DCLAUDE_TAG:-latest}"
 readonly IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 readonly VOLUME_PREFIX="dclaude"

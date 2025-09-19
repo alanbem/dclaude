@@ -46,3 +46,14 @@ dist/
 
 # Local testing
 bin/
+
+# Development tools
+Makefile
+scripts/
+completions/
+examples/
+.editorconfig
+
+# Old/backup files
+*.old
+TASK.md

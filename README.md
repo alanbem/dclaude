@@ -162,7 +162,37 @@ DCLAUDE_DEBUG=true dclaude
 ├── Dockerfile           # Docker image definition
 ├── package.json         # NPM package configuration
 ├── .github/workflows/   # CI/CD pipelines
-└── VERSION             # Version tracking
+├── VERSION              # Version tracking
+├── Makefile             # Development commands
+├── completions/         # Shell completion scripts
+├── examples/            # Usage examples and config
+└── scripts/             # Utility scripts
+```
+
+### Using the Makefile
+```bash
+make build    # Build Docker image locally
+make test     # Run tests
+make install  # Install dclaude locally
+make verify   # Verify installation
+make release  # Create a new release
+```
+
+### Shell Completion
+Install tab completion for your shell:
+```bash
+# Bash
+source completions/dclaude.bash
+
+# Zsh
+source completions/dclaude.zsh
+```
+
+### Configuration File
+Create `~/.dclaude/config` to set defaults:
+```bash
+cp examples/dclaude.config ~/.dclaude/config
+# Edit with your preferences
 ```
 
 ### Contributing
