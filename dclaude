@@ -375,23 +375,43 @@ Usage:
     dclaude [options] [claude-args...]
 
 Options:
-    --version    Show version information
-    --update     Force update the Docker image
-    --help       Show this help message
-    --debug      Run with debug output
+    --version       Show version information
+    --update        Force update the Docker image
+    --help          Show this help message
+    --debug         Run with debug output
+    --force-host    Force use of host networking mode
+    --force-bridge  Force use of bridge networking mode
 
 Environment Variables:
     DCLAUDE_TAG           Docker image tag to use (default: latest)
     DCLAUDE_DEBUG         Enable debug output (default: false)
     DCLAUDE_DOCKER_SOCKET Docker socket path (default: /var/run/docker.sock)
-    DCLAUDE_NETWORK       Network mode: host, bridge, or auto-detect (default: auto-detect)
+    DCLAUDE_NETWORK       Network mode: host, bridge, or auto (default: auto)
+
+Network Modes:
+    auto    Auto-detect best available networking mode (default)
+    host    Use host networking (requires platform support)
+    bridge  Use bridge networking (limited localhost access)
 
 Examples:
-    dclaude                    # Start Claude interactively
-    dclaude "fix the bug"      # Run Claude with a command
-    dclaude --version          # Show version
-    dclaude --update           # Update Docker image
-    DCLAUDE_DEBUG=true dclaude # Run with debug output
+    dclaude                         # Start Claude with auto-detected networking
+    dclaude --force-host           # Force host networking (full localhost access)
+    dclaude --force-bridge         # Force bridge networking (limited localhost access)
+    dclaude "fix the bug"          # Run Claude with a specific command
+    dclaude --version              # Show version information
+    dclaude --update               # Update Docker image to latest version
+    DCLAUDE_DEBUG=true dclaude     # Run with detailed debug output
+    DCLAUDE_NETWORK=host dclaude   # Set network mode via environment variable
+
+Use Cases:
+    # Development with local services (databases, APIs)
+    dclaude --force-host           # Enables access to localhost:3000, localhost:5432, etc.
+
+    # Isolated development (no localhost dependencies)
+    dclaude --force-bridge         # Safer mode when you don't need localhost access
+
+    # Debugging networking issues
+    DCLAUDE_DEBUG=true dclaude     # Shows network detection and Docker configuration
 
 Security Note:
     This tool mounts the Docker socket, granting the container access to Docker.
@@ -404,28 +424,68 @@ EOF
 
 # Main execution
 main() {
-    # Parse special flags
-    case "${1:-}" in
-        --version)
-            show_version
-            ;;
-        --update)
-            check_docker
-            check_docker_running
-            docker pull "$IMAGE"
-            success "Image updated successfully."
-            exit 0
-            ;;
-        --debug)
-            export DCLAUDE_DEBUG=true
-            shift
-            main "$@"
-            ;;
-        --help)
-            show_help
-            exit 0
-            ;;
-    esac
+    # First, scan all arguments to detect conflicts before processing any flags
+    local has_force_host=false
+    local has_force_bridge=false
+    local args=("$@")
+
+    for arg in "${args[@]}"; do
+        case "$arg" in
+            --force-host)
+                has_force_host=true
+                ;;
+            --force-bridge)
+                has_force_bridge=true
+                ;;
+        esac
+    done
+
+    # Check for conflicting flags
+    if [[ "$has_force_host" == "true" && "$has_force_bridge" == "true" ]]; then
+        error "Conflicting flags: cannot use both --force-host and --force-bridge"
+        exit 1
+    fi
+
+    # Parse special flags (process them iteratively instead of recursively)
+    local processed_args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --version)
+                show_version
+                ;;
+            --update)
+                check_docker
+                check_docker_running
+                docker pull "$IMAGE"
+                success "Image updated successfully."
+                exit 0
+                ;;
+            --debug)
+                export DCLAUDE_DEBUG=true
+                shift
+                ;;
+            --force-host)
+                export DCLAUDE_NETWORK=host
+                shift
+                ;;
+            --force-bridge)
+                export DCLAUDE_NETWORK=bridge
+                shift
+                ;;
+            --help)
+                show_help
+                exit 0
+                ;;
+            *)
+                # Collect remaining arguments for Claude
+                processed_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    # Set remaining arguments for Claude
+    set -- "${processed_args[@]}"
 
     # Show security warning if Docker socket will be mounted
     if [[ -S "$DOCKER_SOCKET" ]] && [[ "$DEBUG" == "true" ]]; then
@@ -449,10 +509,13 @@ main() {
     debug "Platform detected: $platform"
 
     # Set network mode based on auto-detection or user preference
-    local network_mode="${DCLAUDE_NETWORK:-}"
-    if [[ -z "$network_mode" ]]; then
+    local network_mode="${DCLAUDE_NETWORK:-auto}"
+    local detection_source="default"
+
+    if [[ "$network_mode" == "auto" || -z "$network_mode" ]]; then
         # Auto-detect network capability
         network_mode=$(detect_network_capability)
+        detection_source="auto-detected"
         debug "Auto-detected network mode: $network_mode"
 
         # Show warning if using bridge mode
@@ -469,10 +532,43 @@ main() {
         else
             debug "Host networking available - full localhost access enabled"
         fi
-    else
+    elif [[ "$network_mode" =~ ^(host|bridge)$ ]]; then
+        detection_source="user-specified"
         debug "Using user-specified network mode: $network_mode"
+    else
+        warning "Invalid network mode '$network_mode'. Valid options: host, bridge, auto. Falling back to auto-detection"
+        network_mode=$(detect_network_capability)
+        detection_source="fallback auto-detected"
+        debug "Fallback auto-detected network mode: $network_mode"
     fi
-    debug "Network mode: $network_mode"
+    debug "Network mode: $network_mode ($detection_source)"
+
+    # Enhanced debug output for network configuration
+    if [[ "$DEBUG" == "true" ]]; then
+        debug "Network configuration summary:"
+        debug "  - Platform: $platform"
+        debug "  - Network mode: $network_mode"
+        debug "  - Detection source: $detection_source"
+        debug "  - DCLAUDE_NETWORK environment: ${DCLAUDE_NETWORK:-<not set>}"
+        if [[ "$detection_source" =~ auto-detected ]]; then
+            debug "  - Auto-detection performed: yes"
+            if [[ -f "${HOME}/.dclaude/network-mode" ]]; then
+                local cache_age
+                if cache_age=$(stat -c %Y "${HOME}/.dclaude/network-mode" 2>/dev/null) || cache_age=$(stat -f %m "${HOME}/.dclaude/network-mode" 2>/dev/null); then
+                    local current_time
+                    current_time=$(date +%s)
+                    local age_hours=$(( (current_time - cache_age) / 3600 ))
+                    debug "  - Cache used: yes (age: ${age_hours}h)"
+                else
+                    debug "  - Cache used: yes (age: unknown)"
+                fi
+            else
+                debug "  - Cache used: no"
+            fi
+        else
+            debug "  - Auto-detection performed: no"
+        fi
+    fi
 
     # Prepare Docker run arguments
     DOCKER_ARGS=(
