@@ -1,0 +1,51 @@
+{
+  "name": "@alanbem/dclaude",
+  "version": "0.0.1",
+  "description": "Dockerized Claude Code CLI launcher with MCP support",
+  "main": "dclaude",
+  "bin": {
+    "dclaude": "./dclaude"
+  },
+  "scripts": {
+    "test": "bash -n dclaude && echo 'Syntax check passed'",
+    "postinstall": "echo 'dclaude installed successfully. Run \"dclaude --help\" to get started.'"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alanbem/dockerized-claude-code.git"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "docker",
+    "cli",
+    "ai",
+    "anthropic",
+    "mcp",
+    "model-context-protocol",
+    "containerized",
+    "developer-tools"
+  ],
+  "author": "alanbem",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/alanbem/dockerized-claude-code/issues"
+  },
+  "homepage": "https://github.com/alanbem/dockerized-claude-code#readme",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "files": [
+    "dclaude",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

@@ -1,0 +1,48 @@
+# Source control
+.git/
+.github/
+
+# Docker files (not needed for npm package)
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.yml.old
+docker/
+
+# Development files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Documentation (except README)
+TASK.md
+CLAUDE.md
+
+# macOS
+.DS_Store
+
+# Test files
+test/
+*.test.*
+
+# Build artifacts
+build/
+dist/
+
+# Temporary files
+*.tmp
+*.bak
+*.old
+
+# Environment files
+.env
+.env.*
+
+# CI/CD
+.travis.yml
+.gitlab-ci.yml
+.circleci/
+
+# Local testing
+bin/
