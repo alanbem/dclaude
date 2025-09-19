@@ -30,11 +30,11 @@ Run Claude Code CLI in a Docker container with full MCP (Model Context Protocol)
 
 ```bash
 # Clone the repository
-git clone https://github.com/alanbem/dockerized-claude-code.git
-cd dockerized-claude-code
+git clone https://github.com/alanbem/dclaude.git
+cd dclaude
 
 # Build the Docker image
-docker build -t alanbem/claude-code:latest .
+docker build -t alanbem/dclaude:latest .
 
 # Make the launcher script executable
 chmod +x dclaude
@@ -62,7 +62,7 @@ docker run --rm -it \
   -v "$(pwd):$(pwd)" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -w "$(pwd)" \
-  alanbem/claude-code --help
+  alanbem/dclaude --help
 ```
 
 ## Usage
@@ -232,11 +232,11 @@ docker volume rm dclaude-config dclaude-cache dclaude-claude
 
 ```bash
 # Clone the repository
-git clone https://github.com/alanbem/dockerized-claude-code.git
-cd dockerized-claude-code
+git clone https://github.com/alanbem/dclaude.git
+cd dclaude
 
 # Build the Docker image
-docker build -t alanbem/claude-code:local .
+docker build -t alanbem/dclaude:local .
 
 # Use the local image
 DCLAUDE_TAG=local ./dclaude
@@ -262,7 +262,7 @@ sudo usermod -aG docker $USER
 ### Image not found / Pull failed
 ```bash
 # Build the image locally first
-docker build -t alanbem/claude-code:latest .
+docker build -t alanbem/dclaude:latest .
 ```
 
 ### Claude authentication issues
@@ -353,5 +353,5 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/alanbem/dockerized-claude-code/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/alanbem/dockerized-claude-code/discussions)
+- **Issues**: [GitHub Issues](https://github.com/alanbem/dclaude/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/alanbem/dclaude/discussions)

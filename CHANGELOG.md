@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full MCP (Model Context Protocol) support with Node.js and Python
 - `dclaude` launcher script with platform detection
 - NPM package distribution as `@alanbem/dclaude`
-- Docker Hub automated builds for `alanbem/claude-code`
+- Docker Hub automated builds for `alanbem/dclaude`
 - GitHub Actions CI/CD pipelines
 - Named Docker volumes for persistent data
 - Path mirroring between host and container
@@ -27,4 +27,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Conditional Docker socket mounting
 - Security warnings and documentation
 
-[0.0.1]: https://github.com/alanbem/dockerized-claude-code/releases/tag/v0.0.1
+[0.0.1]: https://github.com/alanbem/dclaude/releases/tag/v0.0.1

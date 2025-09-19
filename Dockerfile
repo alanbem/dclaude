@@ -67,8 +67,8 @@ ENV CLAUDE_UNSAFE_TRUST_WORKSPACE=true \
 LABEL maintainer="alanbem" \
       description="Dockerized Claude Code with MCP support" \
       version="0.0.1" \
-      org.opencontainers.image.source="https://github.com/alanbem/dockerized-claude-code" \
-      org.opencontainers.image.documentation="https://github.com/alanbem/dockerized-claude-code/blob/main/README.md" \
+      org.opencontainers.image.source="https://github.com/alanbem/dclaude" \
+      org.opencontainers.image.documentation="https://github.com/alanbem/dclaude/blob/main/README.md" \
       org.opencontainers.image.licenses="MIT"
 
 # Health check

@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/alanbem/dockerized-claude-code.git"
+    "url": "git+https://github.com/alanbem/dclaude.git"
   },
   "keywords": [
     "claude",
@@ -30,9 +30,9 @@
   "author": "alanbem",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/alanbem/dockerized-claude-code/issues"
+    "url": "https://github.com/alanbem/dclaude/issues"
   },
-  "homepage": "https://github.com/alanbem/dockerized-claude-code#readme",
+  "homepage": "https://github.com/alanbem/dclaude#readme",
   "engines": {
     "node": ">=14.0.0"
   },

@@ -15,8 +15,8 @@ help:
 
 # Build Docker image
 build:
-	docker build -t alanbem/claude-code:local .
-	@echo "✓ Docker image built: alanbem/claude-code:local"
+	docker build -t alanbem/dclaude:local .
+	@echo "✓ Docker image built: alanbem/dclaude:local"
 
 # Run tests
 test:
@@ -24,11 +24,11 @@ test:
 	@bash -n dclaude
 	@echo "✓ Syntax check passed"
 	@echo "Testing Docker image..."
-	@if docker image inspect alanbem/claude-code:local &>/dev/null; then \
-		docker run --rm alanbem/claude-code:local --version && echo "✓ Docker image test passed"; \
+	@if docker image inspect alanbem/dclaude:local &>/dev/null; then \
+		docker run --rm alanbem/dclaude:local --version && echo "✓ Docker image test passed"; \
 	else \
 		echo "⚠️  Local image not found. Run 'make build' first or test will use remote image"; \
-		docker run --rm alanbem/claude-code:latest --version 2>/dev/null && echo "✓ Remote image test passed" || echo "✗ No image available for testing"; \
+		docker run --rm alanbem/dclaude:latest --version 2>/dev/null && echo "✓ Remote image test passed" || echo "✗ No image available for testing"; \
 	fi
 
 # Install locally
@@ -46,13 +46,13 @@ verify:
 clean:
 	@echo "Cleaning..."
 	@rm -f *.tgz
-	@docker rmi alanbem/claude-code:local 2>/dev/null || true
+	@docker rmi alanbem/dclaude:local 2>/dev/null || true
 	@echo "✓ Cleaned build artifacts"
 
 # Push to registries (requires authentication)
 push:
 	@echo "Pushing to Docker Hub..."
-	docker push alanbem/claude-code:latest
+	docker push alanbem/dclaude:latest
 	@echo "Publishing to NPM..."
 	npm publish
 	@echo "✓ Pushed to registries"
@@ -73,7 +73,7 @@ release:
 .PHONY: dev-build dev-run
 
 dev-build:
-	docker build -t alanbem/claude-code:dev .
+	docker build -t alanbem/dclaude:dev .
 
 dev-run:
 	DCLAUDE_TAG=dev ./dclaude

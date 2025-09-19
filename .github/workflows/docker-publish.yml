@@ -13,7 +13,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: alanbem/claude-code
+  IMAGE_NAME: alanbem/dclaude
 
 jobs:
   build-and-push:

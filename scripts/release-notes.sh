@@ -149,5 +149,5 @@ echo '# Via NPM'
 echo "npm install -g @alanbem/dclaude@${VERSION}"
 echo ''
 echo '# Via Docker'
-echo "docker pull alanbem/claude-code:${VERSION}"
+echo "docker pull alanbem/dclaude:${VERSION}"
 echo '```'

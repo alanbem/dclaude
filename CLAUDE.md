@@ -27,7 +27,7 @@ This project containerizes the Claude Code CLI inside a Docker container with ho
 3. **Docker Socket Access**
    - Container connects to host Docker daemon via `/var/run/docker.sock`
    - Allows Claude to manage other Docker containers on the host
-   - Network mode set to "host" for localhost port access
+   - Network mode set to "host" on Linux for localhost port access
 
 4. **Persistent Storage** (Named Docker Volumes)
    - Claude configuration stored in named Docker volumes
@@ -57,10 +57,10 @@ DCLAUDE_DEBUG=true dclaude
 ### Building from Source
 ```bash
 # Build Docker image
-docker build -t alanbem/claude-code:local .
+docker build -t alanbem/dclaude:local .
 
 # Test the image
-docker run --rm alanbem/claude-code:local --version
+docker run --rm alanbem/dclaude:local --version
 
 # Use local image with dclaude
 DCLAUDE_TAG=local dclaude

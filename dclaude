@@ -1,6 +1,6 @@
 #!/bin/bash
 # dclaude - Dockerized Claude Code Launcher
-# https://github.com/alanbem/dockerized-claude-code
+# https://github.com/alanbem/dclaude
 
 set -euo pipefail
 
@@ -19,7 +19,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
 fi
 
 # Configuration
-readonly IMAGE_NAME="${DCLAUDE_REGISTRY:-docker.io}/alanbem/claude-code"
+readonly IMAGE_NAME="${DCLAUDE_REGISTRY:-docker.io}/alanbem/dclaude"
 readonly IMAGE_TAG="${DCLAUDE_TAG:-latest}"
 readonly IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 readonly VOLUME_PREFIX="dclaude"
@@ -215,7 +215,7 @@ Security Note:
     Only use in trusted environments.
 
 For more information, visit:
-    https://github.com/alanbem/dockerized-claude-code
+    https://github.com/alanbem/dclaude
 EOF
 }
 

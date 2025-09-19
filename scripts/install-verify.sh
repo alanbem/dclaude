@@ -128,7 +128,7 @@ echo
 echo "Checking Docker image..."
 
 # Check if image exists
-IMAGE="alanbem/claude-code:latest"
+IMAGE="alanbem/dclaude:latest"
 if docker image inspect "${IMAGE}" &> /dev/null; then
     success "Docker image exists: ${IMAGE}"
     IMAGE_ID=$(docker image inspect "${IMAGE}" --format='{{.Id}}' | cut -d: -f2 | head -c 12)
@@ -183,7 +183,7 @@ if ! command -v dclaude &> /dev/null && [[ ! -f "./dclaude" ]]; then
     warning "dclaude not installed"
     echo "  Install with one of:"
     echo "    npm install -g @alanbem/dclaude"
-    echo "    curl -fsSL https://raw.githubusercontent.com/alanbem/dockerized-claude-code/main/dclaude -o dclaude && chmod +x dclaude"
+    echo "    curl -fsSL https://raw.githubusercontent.com/alanbem/dclaude/main/dclaude -o dclaude && chmod +x dclaude"
     READY=false
 fi
 
