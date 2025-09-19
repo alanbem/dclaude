@@ -22,23 +22,33 @@ This document tracks potential features, improvements, and ideas for dclaude. No
   - Note: Sessions lost when container exits (use `exit` to leave container)
 - **Complexity**: Low
 
-### SSH Configuration Mounting
-- **Description**: Mount host's .ssh directory into container for key reuse
-- **Use Case**: Use existing SSH keys for git operations, remote server access
+### SSH & Tool Configuration Mounting
+- **Description**: Mount host's SSH and tool configs into container for seamless integration
+- **Use Case**: Use existing SSH keys, GitHub CLI auth, and other tool configurations
 - **Benefits**:
-  - No need to regenerate SSH keys
-  - Consistent SSH config across host and container
-  - Git operations work seamlessly
+  - No need to regenerate SSH keys or re-authenticate tools
+  - Consistent configuration across host and container
+  - Git operations and GitHub CLI work immediately
 - **Implementation Considerations**:
-  - Platform detection for SSH directory location:
-    - Linux/macOS: `~/.ssh`
-    - Windows: `%USERPROFILE%\.ssh`
-  - Read-only mount for security
-  - Optional via environment variable (DCLAUDE_MOUNT_SSH)
+  - Mount multiple config directories (read-only for security):
+    - `~/.ssh` → `/home/claude/.ssh` (SSH keys)
+    - `~/.config/gh` → `/home/claude/.config/gh` (GitHub CLI auth)
+    - `~/.gitconfig` → `/home/claude/.gitconfig` (Git configuration)
+    - `~/.npmrc` → `/home/claude/.npmrc` (NPM auth, optional)
+  - Platform detection for paths:
+    - Linux/macOS: `~/.ssh`, `~/.config/`
+    - Windows: `%USERPROFILE%\.ssh`, `%APPDATA%\`
+  - Add `gh` CLI to Dockerfile when SSH mounting is enabled
+  - Optional via environment variable (DCLAUDE_MOUNT_CONFIGS=true)
+- **Tool Integration**:
+  - GitHub CLI: Pre-installed, uses mounted auth from `~/.config/gh/`
+  - Git: Uses mounted `.gitconfig` and SSH keys
+  - NPM: Optional mounting of `.npmrc` for private registries
 - **Security Notes**:
   - Should be opt-in feature
-  - Consider permission implications
-- **Complexity**: Low
+  - All mounts should be read-only
+  - Document which configs are being shared
+- **Complexity**: Low-Medium
 
 ### Dedicated Workspace Directory
 - **Description**: Create a persistent dclaude workspace directory for project files

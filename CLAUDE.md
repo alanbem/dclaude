@@ -14,6 +14,7 @@ AI assistant guidance for working with the dclaude (Dockerized Claude Code) proj
 - **Dockerfile**: Alpine 3.19 base, non-root `claude` user, includes Docker CLI/Compose, Node.js, Python
 - **dclaude script**: Launcher handling platform detection, volume management, path mirroring
 - **Docker volumes**: `dclaude-config`, `dclaude-cache`, `dclaude-claude` for persistent data
+- **Future**: Consider adding `gh` CLI if mounting host configs (`.ssh`, `.config/gh`)
 
 ### Host Integration Features
 1. **Docker socket mounting** (`/var/run/docker.sock`) - enables container management from within
