@@ -166,25 +166,50 @@ This document tracks potential features, improvements, and ideas for dclaude. No
 - **Use Case**: Better localhost access for development on macOS/Windows
 - **Current Situation**:
   - Linux: Host networking works natively
-  - macOS: Docker Desktop beta feature or OrbStack supports it
+  - macOS: Docker Desktop beta feature or OrbStack supports it (CONFIRMED WORKING!)
   - Windows: Docker Desktop beta feature may support it
+- **Tested & Verified Features** (macOS with host networking):
+  - ✅ **Host → Container**: Containers can access host's localhost services
+  - ✅ **Container → Container**: Containers can see each other's services via localhost
+  - ✅ **dclaude Integration**: Claude container can access any localhost:port
+  - ✅ **Proper Isolation**: Bridge mode correctly blocks localhost access
 - **Implementation Ideas**:
-  - Test host networking capability on startup:
+  - Comprehensive test on startup:
     ```bash
-    # Quick test: run container with host network and check localhost access
-    docker run --rm -d --network host --name test-host alpine sleep 2
-    # Try to access a localhost port or check network interfaces
-    docker exec test-host wget -q -O- http://localhost:80 2>/dev/null && echo "host networking works"
-    docker rm -f test-host 2>/dev/null
+    # Test 1: Check if host network mode works
+    docker run --rm --network host alpine:3.19 sh -c 'ifconfig lo | grep 127.0.0.1' &>/dev/null
+
+    # Test 2: Check container-to-container localhost access
+    # Start test server in container 1
+    docker run --rm -d --name test-srv --network host alpine sh -c \
+      'echo "test" > /tmp/test.html && httpd -f -p 18888 -h /tmp'
+
+    # Try to access from container 2
+    docker run --rm --network host alpine sh -c \
+      'wget -q -O- http://localhost:18888/test.html' &>/dev/null && \
+      echo "host networking fully supported"
+
+    # Cleanup
+    docker stop test-srv &>/dev/null
     ```
-  - Cache the result for future runs (in a dotfile or env var)
-  - Fall back to bridge mode if host networking fails
+  - Cache the result in `~/.dclaude/network-mode`
+  - Fall back to bridge mode if any test fails
   - Add `--force-bridge` and `--force-host` flags to override detection
+  - Environment variable: `DCLAUDE_NETWORK=host|bridge|auto` (default: auto)
 - **Benefits**:
   - Seamless localhost access on all platforms
-  - No more port mapping hassles
+  - No port mapping needed
   - Better performance for network operations
-  - Works automatically with OrbStack
+  - Perfect for microservices development
+  - Works automatically with OrbStack and Docker Desktop beta
+- **Real-World Example**:
+  ```bash
+  # Terminal 1: Run your app
+  docker run --rm --network host -p 3000:3000 my-app
+
+  # Terminal 2: Claude can test it
+  DCLAUDE_NETWORK=host ./dclaude "test the API at localhost:3000"
+  ```
 - **Complexity**: Low-Medium
 
 ## Ideas & Considerations
