@@ -5,19 +5,21 @@ This document tracks potential features, improvements, and ideas for dclaude. No
 
 ## Planned Features
 
-### Persistent Session Management with Screen/Tmux
-- **Description**: Run Claude in a screen or tmux session within the container
-- **Use Case**: Exec into container and attach/detach from Claude sessions, enabling persistent work
+### Session Management with Screen/Tmux (Within Container Lifetime)
+- **Description**: Run Claude in a screen or tmux session within the ephemeral container
+- **Use Case**: Detach/reattach to Claude sessions while container is running
 - **Benefits**:
-  - Keep Claude running while doing other work in container
-  - Multiple concurrent Claude sessions in tabs/windows
-  - Switch between Claude and shell as needed
+  - Keep Claude running while doing other work in same container session
+  - Multiple concurrent Claude sessions in screen tabs/windows
+  - Switch between Claude and shell without losing Claude state
+  - No persistent containers to manage
 - **Implementation Ideas**:
-  - Add screen/tmux to Dockerfile
-  - Auto-start Claude in a named screen session
-  - Add `dclaude exec` command to enter running container
-  - Commands like: `dclaude exec` → `screen -r claude`
-  - Document session management (detach: Ctrl+A,D)
+  - Add screen (or tmux) to Dockerfile
+  - Option 1: Auto-start Claude in screen on container launch
+  - Option 2: Add wrapper script to start Claude in screen
+  - Add helper command: `dclaude --screen` to start in screen mode
+  - Document: While container runs, can detach (Ctrl+A,D) and reattach (`screen -r`)
+  - Note: Sessions lost when container exits (use `exit` to leave container)
 - **Complexity**: Low
 
 ### SSH Configuration Mounting
@@ -59,9 +61,9 @@ This document tracks potential features, improvements, and ideas for dclaude. No
 ## Ideas & Considerations
 
 ### Container Access Improvements
-- Simple exec wrapper: `dclaude exec` to enter running container
-- Later: `dclaude exec bash` for direct shell access
-- Future: `dclaude exec screen -r` to attach to Claude session
+- Within running container: Use screen to manage Claude sessions
+- Workflow: Start container → detach from Claude (Ctrl+A,D) → work in shell → reattach (`screen -r`)
+- No need for exec since container stays ephemeral
 
 ### Enhanced SSH Access (Future)
 - Add SSH server to container (dropbear/openssh)
