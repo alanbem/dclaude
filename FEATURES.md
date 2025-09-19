@@ -58,25 +58,13 @@ This document tracks potential features, improvements, and ideas for dclaude. No
 - **Complexity**: Low-Medium
 
 ### Enhanced Developer Tools Bundle
-- **Description**: Pre-install commonly used development tools in the container
-- **Use Case**: Developers can use familiar tools without installation during each session
-- **Tool Categories**:
-  - **Version Control & Git Tools**:
+- **Description**: Pre-install all commonly used development tools in the container
+- **Use Case**: Have familiar tools available without installation during each session
+- **Implementation Timeline**:
+
+  **Near Future (Priority)**:
+  - **GitHub Integration**:
     - `gh` - GitHub CLI for PR/issue management
-    - `glab` - GitLab CLI
-    - `tig` - Text-mode interface for git
-    - `git-flow` - Git branching model tools
-  - **Cloud Provider CLIs**:
-    - `aws` CLI - AWS services management
-    - `gcloud` - Google Cloud Platform
-    - `az` - Azure CLI
-    - `doctl` - DigitalOcean CLI
-  - **Container & Orchestration**:
-    - `kubectl` - Kubernetes control
-    - `helm` - Kubernetes package manager
-    - `k9s` - Kubernetes TUI
-    - `podman` - Alternative container runtime
-    - `buildah` - Container image builder
   - **Development Utilities**:
     - `jq` - JSON processor (already included)
     - `yq` - YAML processor
@@ -85,7 +73,24 @@ This document tracks potential features, improvements, and ideas for dclaude. No
     - `ripgrep` - Fast grep alternative
     - `fd` - Fast find alternative
     - `bat` - Better cat with syntax highlighting
-    - `exa`/`eza` - Modern ls replacement
+    - `eza` - Modern ls replacement
+  - **Cloud Provider CLIs**:
+    - `aws` CLI - AWS services management
+    - `gcloud` - Google Cloud Platform
+    - `az` - Azure CLI
+    - `doctl` - DigitalOcean CLI
+
+  **Considered (Future)**:
+  - **Version Control & Git Tools**:
+    - `glab` - GitLab CLI
+    - `tig` - Text-mode interface for git
+    - `git-flow` - Git branching model tools
+  - **Container & Orchestration**:
+    - `kubectl` - Kubernetes control
+    - `helm` - Kubernetes package manager
+    - `k9s` - Kubernetes TUI
+    - `podman` - Alternative container runtime
+    - `buildah` - Container image builder
   - **Database Clients**:
     - `psql` - PostgreSQL client
     - `mysql` - MySQL client
@@ -95,22 +100,21 @@ This document tracks potential features, improvements, and ideas for dclaude. No
     - `nvm` - Node Version Manager
     - `pyenv` - Python Version Manager
     - `poetry` - Python dependency management
-    - `cargo` - Rust package manager (if Rust needed)
+    - `cargo` - Rust package manager
   - **Monitoring & Debugging**:
     - `htop` - Process viewer
     - `ncdu` - Disk usage analyzer
     - `lazydocker` - Docker TUI
     - `dive` - Docker image explorer
-- **Implementation Ideas**:
-  - Create variants: minimal, standard, full
-  - Use multi-stage Dockerfile to keep size manageable
-  - Environment variable to select tool bundle (DCLAUDE_TOOLS=minimal|standard|full)
-  - Document which tools are available in each bundle
+
+- **Implementation Approach**:
+  - Install all tools in single image (you're the main user)
+  - No variants for now - full installation
+  - Add tools progressively starting with Near Future list
 - **Considerations**:
-  - Image size impact (some CLIs are large)
-  - Update frequency for security patches
-  - License compatibility
-- **Complexity**: Medium
+  - Image size will grow but acceptable for main user
+  - Can optimize later if needed
+- **Complexity**: Low-Medium
 
 ### Dedicated Workspace Directory
 - **Description**: Create a persistent dclaude workspace directory for project files
