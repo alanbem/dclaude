@@ -49,3 +49,7 @@ temp/
 # Build artifacts
 dist/
 build/
+
+# Project-specific task tracking
+TASK.md
+TASKS.md
