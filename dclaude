@@ -1,0 +1,324 @@
+#!/bin/bash
+# dclaude - Dockerized Claude Code Launcher
+# https://github.com/alanbem/dockerized-claude-code
+
+set -euo pipefail
+
+# Configuration
+readonly IMAGE_NAME="alanbem/claude-code"
+readonly IMAGE_TAG="${DCLAUDE_TAG:-latest}"
+readonly IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
+readonly VOLUME_PREFIX="dclaude"
+readonly DEBUG="${DCLAUDE_DEBUG:-false}"
+readonly DOCKER_SOCKET="${DCLAUDE_DOCKER_SOCKET:-/var/run/docker.sock}"
+
+# Colors for output (only if terminal supports it)
+if [[ -t 1 ]]; then
+    readonly RED='\033[0;31m'
+    readonly GREEN='\033[0;32m'
+    readonly YELLOW='\033[1;33m'
+    readonly BLUE='\033[0;34m'
+    readonly NC='\033[0m' # No Color
+else
+    readonly RED=''
+    readonly GREEN=''
+    readonly YELLOW=''
+    readonly BLUE=''
+    readonly NC=''
+fi
+
+# Helper functions
+error() {
+    echo -e "${RED}Error: $1${NC}" >&2
+}
+
+warning() {
+    echo -e "${YELLOW}Warning: $1${NC}" >&2
+}
+
+success() {
+    echo -e "${GREEN}$1${NC}"
+}
+
+info() {
+    echo -e "${BLUE}$1${NC}"
+}
+
+debug() {
+    if [[ "$DEBUG" == "true" ]]; then
+        echo -e "${YELLOW}Debug: $1${NC}" >&2
+    fi
+}
+
+# Detect platform
+detect_platform() {
+    case "$(uname -s)" in
+        Darwin*)
+            echo "darwin"
+            ;;
+        Linux*)
+            echo "linux"
+            ;;
+        MINGW*|CYGWIN*|MSYS*)
+            echo "windows"
+            ;;
+        *)
+            echo "unknown"
+            ;;
+    esac
+}
+
+# Check if Docker is installed
+check_docker() {
+    if ! command -v docker &> /dev/null; then
+        error "Docker is not installed. Please install Docker first."
+        echo "Visit: https://docs.docker.com/get-docker/" >&2
+        exit 1
+    fi
+    debug "Docker found at: $(command -v docker)"
+}
+
+# Check if Docker daemon is running
+check_docker_running() {
+    if ! docker info &> /dev/null; then
+        error "Docker daemon is not running. Please start Docker."
+        exit 1
+    fi
+    debug "Docker daemon is running"
+}
+
+# Create Docker volumes if they don't exist
+create_volumes() {
+    local volumes=("${VOLUME_PREFIX}-config" "${VOLUME_PREFIX}-cache" "${VOLUME_PREFIX}-claude")
+
+    for vol in "${volumes[@]}"; do
+        if ! docker volume inspect "$vol" &> /dev/null; then
+            info "Creating volume: $vol"
+            if ! docker volume create "$vol" > /dev/null; then
+                error "Failed to create volume: $vol"
+                exit 1
+            fi
+        else
+            debug "Volume exists: $vol"
+        fi
+    done
+}
+
+# Pull or update the Docker image
+update_image() {
+    local current_id=""
+    local new_id=""
+
+    # Get current image ID if exists
+    if docker image inspect "$IMAGE" &> /dev/null; then
+        current_id=$(docker image inspect "$IMAGE" --format='{{.Id}}')
+        debug "Current image ID: ${current_id:0:12}"
+    fi
+
+    # Try to pull latest
+    info "Checking for updates to $IMAGE..."
+    if docker pull "$IMAGE" 2> /dev/null; then
+        new_id=$(docker image inspect "$IMAGE" --format='{{.Id}}' 2>/dev/null || echo "")
+
+        if [[ -z "$new_id" ]]; then
+            warning "Failed to inspect image after pull"
+        elif [[ "$current_id" != "$new_id" ]]; then
+            success "Image updated successfully."
+            debug "New image ID: ${new_id:0:12}"
+        else
+            debug "Image is up to date"
+        fi
+    else
+        if [[ -z "$current_id" ]]; then
+            error "Failed to pull image and no local image exists."
+            exit 1
+        else
+            warning "Could not check for updates, using local image."
+        fi
+    fi
+}
+
+# Get the host path for mounting
+get_host_path() {
+    local host_path
+    host_path=$(pwd) || {
+        error "Failed to get current directory"
+        exit 1
+    }
+
+    # Basic path validation
+    if [[ ! -d "$host_path" ]]; then
+        error "Current directory does not exist: $host_path"
+        exit 1
+    fi
+
+    debug "Host path: $host_path"
+    echo "$host_path"
+}
+
+# Show version
+show_version() {
+    check_docker
+    check_docker_running
+
+    if docker run --rm "$IMAGE" --version 2>/dev/null; then
+        exit 0
+    else
+        echo "dclaude version 0.0.1 (Docker image unavailable)"
+        exit 0
+    fi
+}
+
+# Show help
+show_help() {
+    cat << EOF
+dclaude - Dockerized Claude Code Launcher
+
+Usage:
+    dclaude [options] [claude-args...]
+
+Options:
+    --version    Show version information
+    --update     Force update the Docker image
+    --help       Show this help message
+    --debug      Run with debug output
+
+Environment Variables:
+    DCLAUDE_TAG           Docker image tag to use (default: latest)
+    DCLAUDE_DEBUG         Enable debug output (default: false)
+    DCLAUDE_DOCKER_SOCKET Docker socket path (default: /var/run/docker.sock)
+    DCLAUDE_NETWORK       Network mode (default: host on Linux, bridge on Mac/Windows)
+
+Examples:
+    dclaude                    # Start Claude interactively
+    dclaude "fix the bug"      # Run Claude with a command
+    dclaude --version          # Show version
+    dclaude --update           # Update Docker image
+    DCLAUDE_DEBUG=true dclaude # Run with debug output
+
+Security Note:
+    This tool mounts the Docker socket, granting the container access to Docker.
+    Only use in trusted environments.
+
+For more information, visit:
+    https://github.com/alanbem/dockerized-claude-code
+EOF
+}
+
+# Main execution
+main() {
+    # Parse special flags
+    case "${1:-}" in
+        --version)
+            show_version
+            ;;
+        --update)
+            check_docker
+            check_docker_running
+            docker pull "$IMAGE"
+            success "Image updated successfully."
+            exit 0
+            ;;
+        --debug)
+            export DCLAUDE_DEBUG=true
+            shift
+            main "$@"
+            ;;
+        --help)
+            show_help
+            exit 0
+            ;;
+    esac
+
+    # Show security warning if Docker socket will be mounted
+    if [[ -S "$DOCKER_SOCKET" ]] && [[ "$DEBUG" == "true" ]]; then
+        warning "Docker socket will be mounted - container will have Docker access"
+    fi
+
+    # Check prerequisites
+    check_docker
+    check_docker_running
+
+    # Setup environment
+    create_volumes
+    update_image
+
+    # Get current directory for mounting
+    HOST_PATH=$(get_host_path)
+
+    # Platform-specific settings
+    local platform
+    platform=$(detect_platform)
+    debug "Platform detected: $platform"
+
+    # Set network mode based on platform
+    local network_mode="${DCLAUDE_NETWORK:-}"
+    if [[ -z "$network_mode" ]]; then
+        case "$platform" in
+            linux)
+                network_mode="host"
+                ;;
+            darwin|windows)
+                network_mode="bridge"
+                warning "Host networking not available on $platform, using bridge mode"
+                ;;
+            *)
+                network_mode="bridge"
+                ;;
+        esac
+    fi
+    debug "Network mode: $network_mode"
+
+    # Prepare Docker run arguments
+    DOCKER_ARGS=(
+        "run"
+        "--rm"
+        "-it"
+        # Mount current directory
+        -v "${HOST_PATH}:${HOST_PATH}"
+        # Mount persistent volumes
+        -v "${VOLUME_PREFIX}-config:/home/claude/.config"
+        -v "${VOLUME_PREFIX}-cache:/home/claude/.cache"
+        -v "${VOLUME_PREFIX}-claude:/home/claude/.claude"
+        # Set working directory
+        -w "${HOST_PATH}"
+        # Network mode
+        --network="$network_mode"
+        # Environment
+        -e "TERM=${TERM:-xterm-256color}"
+    )
+
+    # Mount Docker socket if it exists and is a socket
+    if [[ -S "$DOCKER_SOCKET" ]]; then
+        DOCKER_ARGS+=(-v "${DOCKER_SOCKET}:/var/run/docker.sock")
+        debug "Docker socket mounted: $DOCKER_SOCKET"
+    else
+        warning "Docker socket not found or not a socket: $DOCKER_SOCKET"
+        warning "Container will not have Docker access"
+    fi
+
+    # Add any additional environment variables
+    if [[ -n "${CLAUDE_MODEL:-}" ]]; then
+        DOCKER_ARGS+=(-e "CLAUDE_MODEL=${CLAUDE_MODEL}")
+    fi
+
+    if [[ "$DEBUG" == "true" ]]; then
+        debug "Docker command: docker ${DOCKER_ARGS[*]} $IMAGE $*"
+    fi
+
+    # Run Claude in Docker
+    exec docker "${DOCKER_ARGS[@]}" "$IMAGE" "$@"
+}
+
+# Cleanup function
+cleanup() {
+    debug "Cleaning up..."
+}
+
+# Handle signals
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# Run main function
+main "$@"
