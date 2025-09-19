@@ -110,7 +110,13 @@ dclaude creates a containerized environment that closely emulates your host syst
    - `dclaude-config`: Configuration files
    - `dclaude-cache`: Cache data
    - `dclaude-claude`: Claude-specific data
-   - Data persists between container restarts
+   - Data persists between container runs
+
+5. **Ephemeral Containers**: Each `dclaude` run creates a fresh container
+   - Container is removed automatically when you exit
+   - System packages installed during session are lost
+   - File changes in mounted directories are preserved
+   - Use volumes for data that needs to persist
 
 #### Path Mirroring Explained
 
@@ -207,6 +213,7 @@ The container can access Docker on your host system. This enables Claude to:
 - **Languages**: Node.js 20+, Python 3 with pip
 - **Tools**: Docker CLI, Docker Compose, Git, curl, nano
 - **Claude CLI**: Latest version of `@anthropic-ai/claude-code`
+- **Lifecycle**: Ephemeral - fresh container each run, removed on exit
 
 ### Persistent Data
 
