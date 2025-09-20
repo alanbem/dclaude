@@ -786,8 +786,12 @@ main() {
         esac
     done
 
-    # Set remaining arguments for Claude
-    set -- "${processed_args[@]}"
+    # Set remaining arguments for Claude (handle empty array case)
+    if [[ ${#processed_args[@]} -gt 0 ]]; then
+        set -- "${processed_args[@]}"
+    else
+        set --
+    fi
 
     # Docker socket warning will be shown after detection
 
