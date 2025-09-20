@@ -16,7 +16,8 @@
    - Minimum: 2 review cycles (initial + verification)
    - Continue until: No issues found
    - Maximum: 10 review cycles (then escalate/document blockers)
-6. **Only Then**: Mark task as complete and move to next
+6. **Commit**: Create git commit with descriptive message for this phase
+7. **Only Then**: Mark task as complete and move to next
 
 ### Review Requirements:
 - [ ] Code quality and best practices
@@ -31,6 +32,12 @@ When running review agents, always provide:
 - Integration points with existing system
 - Any special requirements or constraints
 - Previous review feedback being addressed
+
+### Commit Guidelines:
+- Commit after each phase is complete and reviewed
+- Use descriptive commit messages explaining what was done
+- Format: "feat/fix/refactor: Brief description of phase work"
+- Include Co-Authored-By: Claude <noreply@anthropic.com> in commits
 
 ## Project Overview
 
@@ -91,6 +98,7 @@ When running review agents, always provide:
 - [ ] Fix review issues
 - [ ] Run verification review
 - [ ] [Continue review cycle until clean]
+- [ ] Commit phase changes
 
 #### Deliverables:
 - [Deliverable 1]
@@ -115,6 +123,7 @@ When running review agents, always provide:
 - [ ] Fix review issues
 - [ ] Run verification review
 - [ ] [Continue review cycle until clean]
+- [ ] Commit phase changes
 
 #### Deliverables:
 - [Deliverable 1]
@@ -139,6 +148,7 @@ When running review agents, always provide:
 - [ ] Fix review issues
 - [ ] Run verification review
 - [ ] [Continue review cycle until clean]
+- [ ] Commit phase changes
 
 #### Deliverables:
 - [Deliverable 1]
