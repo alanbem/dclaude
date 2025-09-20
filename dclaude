@@ -24,7 +24,10 @@ readonly IMAGE_TAG="${DCLAUDE_TAG:-latest}"
 readonly IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 readonly VOLUME_PREFIX="dclaude"
 readonly DEBUG="${DCLAUDE_DEBUG:-false}"
-readonly DOCKER_SOCKET="${DCLAUDE_DOCKER_SOCKET:-/var/run/docker.sock}"
+# Docker socket will be detected dynamically unless overridden
+DOCKER_SOCKET="${DCLAUDE_DOCKER_SOCKET:-}"
+readonly MOUNT_CONFIGS="${DCLAUDE_MOUNT_CONFIGS:-false}"
+readonly SSH_MODE="${DCLAUDE_SSH:-auto}"  # auto, agent-forwarding, key-mount, none
 
 # Colors for output (only if terminal supports it)
 if [[ -t 1 ]]; then
@@ -51,11 +54,11 @@ warning() {
 }
 
 success() {
-    echo -e "${GREEN}$1${NC}"
+    echo -e "${GREEN}$1${NC}" >&2
 }
 
 info() {
-    echo -e "${BLUE}$1${NC}"
+    echo -e "${BLUE}$1${NC}" >&2
 }
 
 debug() {
@@ -80,6 +83,40 @@ detect_platform() {
             echo "unknown"
             ;;
     esac
+}
+
+# Detect Docker socket path based on platform
+detect_docker_socket() {
+    local socket_paths=(
+        "$HOME/.docker/run/docker.sock"      # macOS Docker Desktop
+        "/var/run/docker.sock"                # Linux, Docker CE
+        "$HOME/.colima/default/docker.sock"   # Colima
+        "$HOME/.colima/docker.sock"           # Colima alternative
+        "$HOME/.rd/docker.sock"               # Rancher Desktop
+        "/run/user/$(id -u)/docker.sock"      # Rootless Docker on Linux
+    )
+
+    for socket in "${socket_paths[@]}"; do
+        if [[ -S "$socket" ]]; then
+            debug "Docker socket found at: $socket"
+            echo "$socket"
+            return 0
+        fi
+    done
+
+    # If no socket found, try to get from Docker context
+    if command -v docker &> /dev/null; then
+        local context_socket
+        context_socket=$(docker context inspect 2>/dev/null | jq -r '.[0].Endpoints.docker.Host' | sed 's|unix://||' 2>/dev/null) || true
+        if [[ -n "$context_socket" ]] && [[ -S "$context_socket" ]]; then
+            debug "Docker socket found via context: $context_socket"
+            echo "$context_socket"
+            return 0
+        fi
+    fi
+
+    debug "No Docker socket found"
+    return 1
 }
 
 # Check if Docker is installed
@@ -286,19 +323,18 @@ detect_network_capability() {
 
 # Create Docker volumes if they don't exist
 create_volumes() {
-    local volumes=("${VOLUME_PREFIX}-config" "${VOLUME_PREFIX}-cache" "${VOLUME_PREFIX}-claude")
+    # Only create the essential .claude volume
+    local volume="${VOLUME_PREFIX}-claude"
 
-    for vol in "${volumes[@]}"; do
-        if ! docker volume inspect "$vol" &> /dev/null; then
-            info "Creating volume: $vol"
-            if ! docker volume create "$vol" > /dev/null; then
-                error "Failed to create volume: $vol"
-                exit 1
-            fi
-        else
-            debug "Volume exists: $vol"
+    if ! docker volume inspect "$volume" &> /dev/null; then
+        info "Creating volume: $volume"
+        if ! docker volume create "$volume" > /dev/null; then
+            error "Failed to create volume: $volume"
+            exit 1
         fi
-    done
+    else
+        debug "Volume exists: $volume"
+    fi
 }
 
 # Pull or update the Docker image
@@ -353,6 +389,241 @@ get_host_path() {
     echo "$host_path"
 }
 
+# Handle SSH authentication based on DCLAUDE_SSH mode
+# Setup SSH proxy container for macOS
+setup_ssh_proxy_container() {
+    local proxy_container="dclaude-ssh-proxy"
+
+    # Check if proxy container already exists and is running
+    if docker ps -q -f name="^${proxy_container}$" 2>/dev/null | grep -q .; then
+        debug "SSH proxy container already running"
+        return 0
+    fi
+
+    # Remove any stopped proxy container
+    if docker ps -aq -f name="^${proxy_container}$" 2>/dev/null | grep -q .; then
+        debug "Removing stopped SSH proxy container"
+        docker rm -f "$proxy_container" >/dev/null 2>&1
+    fi
+
+    info "Starting SSH agent proxy container..."
+
+    # Create the proxy container that runs socat as root
+    # This container just bridges the permission gap and exits
+    docker run -d \
+        --name "$proxy_container" \
+        -v "/run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock:ro" \
+        -v "dclaude-ssh-proxy:/tmp/ssh-proxy" \
+        --rm \
+        alpine:3.19 sh -c '
+            # Install socat
+            apk add --no-cache socat >/dev/null 2>&1
+
+            # Create proxy socket accessible to all users
+            rm -f /tmp/ssh-proxy/agent
+            socat UNIX-LISTEN:/tmp/ssh-proxy/agent,fork,mode=666 \
+                  UNIX-CONNECT:/run/host-services/ssh-auth.sock
+        ' >/dev/null 2>&1
+
+    # Give it a moment to start
+    sleep 0.5
+
+    # Verify the proxy is working
+    if ! docker ps -q -f name="^${proxy_container}$" 2>/dev/null | grep -q .; then
+        error "Failed to start SSH proxy container"
+        return 1
+    fi
+
+    debug "SSH proxy container started successfully"
+    return 0
+}
+
+handle_ssh_auth() {
+    local docker_args=()
+    local ssh_mode="${SSH_MODE}"
+
+    # If config mounting is enabled and SSH mode is auto, prefer key-mount for consistency
+    if [[ "$MOUNT_CONFIGS" == "true" ]] && [[ "$ssh_mode" == "auto" ]]; then
+        if [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
+            ssh_mode="key-mount"
+            debug "SSH mode: key-mount (DCLAUDE_MOUNT_CONFIGS=true prefers key mounting)"
+        fi
+    fi
+
+    # Auto-detect best SSH method if set to auto
+    if [[ "$ssh_mode" == "auto" ]]; then
+        if [[ -n "${SSH_AUTH_SOCK:-}" ]] && [[ -S "${SSH_AUTH_SOCK}" ]]; then
+            ssh_mode="agent-forwarding"
+            debug "SSH mode: agent-forwarding (auto-detected active agent)"
+        elif [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
+            ssh_mode="key-mount"
+            debug "SSH mode: key-mount (auto-detected SSH directory)"
+        else
+            ssh_mode="none"
+            debug "SSH mode: none (no SSH agent or keys found)"
+        fi
+    fi
+
+    case "$ssh_mode" in
+        agent-forwarding)
+            if [[ -z "${SSH_AUTH_SOCK:-}" ]]; then
+                warning "SSH agent forwarding requested but SSH_AUTH_SOCK not set"
+                warning "Start SSH agent with: eval \$(ssh-agent) && ssh-add"
+                return 1
+            fi
+
+            if [[ ! -S "${SSH_AUTH_SOCK}" ]]; then
+                warning "SSH agent forwarding requested but socket not found: ${SSH_AUTH_SOCK}"
+                return 1
+            fi
+
+            # Platform-specific socket mounting
+            local platform=$(detect_platform)
+            case "$platform" in
+                linux)
+                    docker_args+=(-v "${SSH_AUTH_SOCK}:/tmp/ssh-agent" -e "SSH_AUTH_SOCK=/tmp/ssh-agent")
+                    info "SSH agent forwarding enabled (Linux)"
+                    ;;
+                darwin)
+                    # On macOS, we need to set up a proxy container first
+                    setup_ssh_proxy_container
+
+                    # Now mount the proxied socket from the shared volume
+                    docker_args+=(-v "dclaude-ssh-proxy:/tmp/ssh-proxy:ro"
+                                 -e "SSH_AUTH_SOCK=/tmp/ssh-proxy/agent")
+                    info "SSH agent forwarding enabled via proxy container"
+                    ;;
+                windows)
+                    warning "SSH agent forwarding not fully supported on Windows"
+                    warning "Consider using key-mount mode instead: DCLAUDE_SSH=key-mount"
+                    return 1
+                    ;;
+            esac
+            ;;
+
+        key-mount)
+            if [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
+                docker_args+=(-v "${HOME}/.ssh:/home/claude/.ssh:ro")
+                info "SSH key mounting enabled (read-only)"
+                debug "Mounting SSH directory: ${HOME}/.ssh"
+                warning "SSH private keys are accessible in container (read-only)"
+            else
+                warning "SSH key mount requested but ~/.ssh not found or not readable"
+                return 1
+            fi
+            ;;
+
+        none)
+            debug "SSH authentication disabled"
+            ;;
+
+        *)
+            error "Invalid SSH mode: $ssh_mode (valid: auto, agent-forwarding, key-mount, none)"
+            return 1
+            ;;
+    esac
+
+    # Print arguments separated by null characters for safe parsing (only if we have args)
+    if [[ ${#docker_args[@]} -gt 0 ]]; then
+        printf '%s\0' "${docker_args[@]}"
+    fi
+}
+
+# Mount configuration directories from host
+mount_host_configs() {
+    local docker_args=()
+    local mounted_count=0
+
+    if [[ "$MOUNT_CONFIGS" != "true" ]]; then
+        debug "Config mounting disabled (DCLAUDE_MOUNT_CONFIGS=$MOUNT_CONFIGS)"
+        return 0
+    fi
+
+    info "Mounting host configurations (read-only)"
+    debug "SSH authentication handled separately via DCLAUDE_SSH"
+
+    # Docker configuration (docker-cli installed)
+    # Default to true when master switch is enabled
+    if [[ "${DCLAUDE_MOUNT_DOCKER:-true}" == "true" ]] && [[ -d "${HOME}/.docker" ]]; then
+        if [[ -r "${HOME}/.docker" ]]; then
+            docker_args+=(-v "${HOME}/.docker:/home/claude/.docker:ro")
+            debug "Mounting Docker config: ${HOME}/.docker"
+            ((mounted_count++))
+        else
+            warning "Docker config exists but is not readable: ${HOME}/.docker"
+        fi
+    elif [[ "${DCLAUDE_MOUNT_DOCKER:-true}" == "true" ]]; then
+        debug "Docker config not found: ${HOME}/.docker"
+    fi
+
+    # GitHub CLI configuration (github-cli installed)
+    # Default to true when master switch is enabled
+    if [[ "${DCLAUDE_MOUNT_GH:-true}" == "true" ]] && [[ -d "${HOME}/.config/gh" ]]; then
+        if [[ -r "${HOME}/.config/gh" ]]; then
+            docker_args+=(-v "${HOME}/.config/gh:/home/claude/.config/gh:ro")
+            debug "Mounting GitHub CLI config: ${HOME}/.config/gh"
+            ((mounted_count++))
+        else
+            warning "GitHub CLI config exists but is not readable: ${HOME}/.config/gh"
+        fi
+    elif [[ "${DCLAUDE_MOUNT_GH:-true}" == "true" ]]; then
+        debug "GitHub CLI config not found: ${HOME}/.config/gh"
+    fi
+
+    # Git configuration (git installed)
+    # Default to true when master switch is enabled
+    if [[ "${DCLAUDE_MOUNT_GIT:-true}" == "true" ]] && [[ -f "${HOME}/.gitconfig" ]]; then
+        if [[ -r "${HOME}/.gitconfig" ]]; then
+            docker_args+=(-v "${HOME}/.gitconfig:/home/claude/.gitconfig:ro")
+            debug "Mounting Git config: ${HOME}/.gitconfig"
+            ((mounted_count++))
+        else
+            warning "Git config exists but is not readable: ${HOME}/.gitconfig"
+        fi
+    elif [[ "${DCLAUDE_MOUNT_GIT:-true}" == "true" ]]; then
+        debug "Git config not found: ${HOME}/.gitconfig"
+    fi
+
+    # NPM configuration (npm installed)
+    # Default to true when master switch is enabled
+    if [[ "${DCLAUDE_MOUNT_NPM:-true}" == "true" ]] && [[ -f "${HOME}/.npmrc" ]]; then
+        if [[ -r "${HOME}/.npmrc" ]]; then
+            docker_args+=(-v "${HOME}/.npmrc:/home/claude/.npmrc:ro")
+            debug "Mounting NPM config: ${HOME}/.npmrc"
+            ((mounted_count++))
+        else
+            warning "NPM config exists but is not readable: ${HOME}/.npmrc"
+        fi
+    elif [[ "${DCLAUDE_MOUNT_NPM:-true}" == "true" ]]; then
+        debug "NPM config not found: ${HOME}/.npmrc"
+    fi
+
+    # Note: AWS CLI, gcloud, kubectl are NOT installed in the container
+    # These configs will not be mounted unless those tools are added to Dockerfile
+
+    # Security warning with details
+    if [[ $mounted_count -gt 0 ]]; then
+        warning "Mounted $mounted_count configuration directories (read-only)"
+        warning "Security: The following sensitive data is now accessible in the container:"
+        # SSH is now handled separately, don't warn here
+        if [[ "${DCLAUDE_MOUNT_DOCKER:-true}" == "true" ]] && [[ -d "${HOME}/.docker" ]] && [[ -r "${HOME}/.docker" ]]; then
+            warning "  - Docker registry authentication tokens"
+        fi
+        if [[ "${DCLAUDE_MOUNT_GH:-true}" == "true" ]] && [[ -d "${HOME}/.config/gh" ]] && [[ -r "${HOME}/.config/gh" ]]; then
+            warning "  - GitHub CLI authentication tokens"
+        fi
+        if [[ "${DCLAUDE_MOUNT_NPM:-true}" == "true" ]] && [[ -f "${HOME}/.npmrc" ]] && [[ -r "${HOME}/.npmrc" ]]; then
+            warning "  - NPM registry authentication tokens"
+        fi
+        warning "Only use in trusted environments!"
+    fi
+
+    # Print arguments separated by null characters for safe parsing (only if we have args)
+    if [[ ${#docker_args[@]} -gt 0 ]]; then
+        printf '%s\0' "${docker_args[@]}"
+    fi
+}
+
 # Show version
 show_version() {
     check_docker
@@ -388,6 +659,20 @@ Environment Variables:
     DCLAUDE_DOCKER_SOCKET Docker socket path (default: /var/run/docker.sock)
     DCLAUDE_NETWORK       Network mode: host, bridge, or auto (default: auto)
 
+    SSH Authentication:
+    DCLAUDE_SSH           SSH auth mode: auto, agent-forwarding, key-mount, none (default: auto)
+                          - auto: Detect best method (agent if available, else keys)
+                          - agent-forwarding: Use SSH agent (more secure, no keys in container)
+                          - key-mount: Mount ~/.ssh directory (backward compatible)
+                          - none: No SSH authentication
+
+    Config Mounting (requires DCLAUDE_MOUNT_CONFIGS=true):
+    DCLAUDE_MOUNT_CONFIGS Master switch to enable config mounting (default: false)
+    DCLAUDE_MOUNT_DOCKER  Mount .docker/ directory (default: true when master enabled)
+    DCLAUDE_MOUNT_GIT     Mount .gitconfig file (default: true when master enabled)
+    DCLAUDE_MOUNT_GH      Mount .config/gh/ for GitHub CLI (default: true when master enabled)
+    DCLAUDE_MOUNT_NPM     Mount .npmrc file (default: true when master enabled)
+
 Network Modes:
     auto    Auto-detect best available networking mode (default)
     host    Use host networking (requires platform support)
@@ -403,6 +688,19 @@ Examples:
     DCLAUDE_DEBUG=true dclaude     # Run with detailed debug output
     DCLAUDE_NETWORK=host dclaude   # Set network mode via environment variable
 
+    # SSH Authentication Options
+    DCLAUDE_SSH=agent-forwarding dclaude  # Use SSH agent (most secure)
+    DCLAUDE_SSH=key-mount dclaude         # Mount SSH keys (backward compatible)
+
+    # Mount host configurations for seamless tool integration
+    DCLAUDE_MOUNT_CONFIGS=true dclaude  # Mount all configs for installed tools
+
+    # Selectively disable specific configs
+    DCLAUDE_MOUNT_CONFIGS=true DCLAUDE_MOUNT_NPM=false dclaude  # Mount all except NPM
+
+    # Only mount specific configs
+    DCLAUDE_MOUNT_CONFIGS=true DCLAUDE_MOUNT_DOCKER=false DCLAUDE_MOUNT_NPM=false dclaude
+
 Use Cases:
     # Development with local services (databases, APIs)
     dclaude --force-host           # Enables access to localhost:3000, localhost:5432, etc.
@@ -413,9 +711,13 @@ Use Cases:
     # Debugging networking issues
     DCLAUDE_DEBUG=true dclaude     # Shows network detection and Docker configuration
 
+    # Using existing SSH keys and tool authentication
+    DCLAUDE_MOUNT_CONFIGS=true dclaude  # Use your SSH keys, GitHub auth, Docker logins
+
 Security Note:
     This tool mounts the Docker socket, granting the container access to Docker.
-    Only use in trusted environments.
+    When DCLAUDE_MOUNT_CONFIGS is enabled, it also mounts sensitive configuration
+    files (SSH keys, auth tokens) as read-only. Only use in trusted environments.
 
 For more information, visit:
     https://github.com/alanbem/dclaude
@@ -427,9 +729,9 @@ main() {
     # First, scan all arguments to detect conflicts before processing any flags
     local has_force_host=false
     local has_force_bridge=false
-    local args=("$@")
 
-    for arg in "${args[@]}"; do
+    # Safe iteration over arguments (handles empty list)
+    for arg in "$@"; do
         case "$arg" in
             --force-host)
                 has_force_host=true
@@ -487,10 +789,7 @@ main() {
     # Set remaining arguments for Claude
     set -- "${processed_args[@]}"
 
-    # Show security warning if Docker socket will be mounted
-    if [[ -S "$DOCKER_SOCKET" ]] && [[ "$DEBUG" == "true" ]]; then
-        warning "Docker socket will be mounted - container will have Docker access"
-    fi
+    # Docker socket warning will be shown after detection
 
     # Check prerequisites
     check_docker
@@ -570,16 +869,38 @@ main() {
         fi
     fi
 
+    # Detect TTY availability
+    local tty_flags=""
+    if [[ -t 0 ]]; then
+        # stdin is a TTY
+        tty_flags="-i"
+    fi
+    if [[ -t 1 ]]; then
+        # stdout is a TTY
+        tty_flags="${tty_flags} -t"
+    fi
+
+    # If we have TTY flags, trim whitespace
+    tty_flags=$(echo $tty_flags | xargs)
+
+    debug "TTY detection: stdin=$(test -t 0 && echo yes || echo no), stdout=$(test -t 1 && echo yes || echo no)"
+    debug "TTY flags: ${tty_flags:-none}"
+
     # Prepare Docker run arguments
     DOCKER_ARGS=(
         "run"
         "--rm"
-        "-it"
+    )
+
+    # Add TTY flags if available
+    if [[ -n "$tty_flags" ]]; then
+        DOCKER_ARGS+=($tty_flags)
+    fi
+
+    DOCKER_ARGS+=(
         # Mount current directory
         -v "${HOST_PATH}:${HOST_PATH}"
-        # Mount persistent volumes
-        -v "${VOLUME_PREFIX}-config:/home/claude/.config"
-        -v "${VOLUME_PREFIX}-cache:/home/claude/.cache"
+        # Mount persistent Claude configuration volume
         -v "${VOLUME_PREFIX}-claude:/home/claude/.claude"
         # Set working directory
         -w "${HOST_PATH}"
@@ -589,14 +910,31 @@ main() {
         -e "TERM=${TERM:-xterm-256color}"
     )
 
-    # Mount Docker socket if it exists and is a socket
-    if [[ -S "$DOCKER_SOCKET" ]]; then
+    # Detect and mount Docker socket if it exists
+    if [[ -z "$DOCKER_SOCKET" ]]; then
+        DOCKER_SOCKET=$(detect_docker_socket) || true
+    fi
+
+    if [[ -n "$DOCKER_SOCKET" ]] && [[ -S "$DOCKER_SOCKET" ]]; then
         DOCKER_ARGS+=(-v "${DOCKER_SOCKET}:/var/run/docker.sock")
         debug "Docker socket mounted: $DOCKER_SOCKET"
     else
-        warning "Docker socket not found or not a socket: $DOCKER_SOCKET"
+        warning "Docker socket not found"
         warning "Container will not have Docker access"
+        debug "Searched standard locations and Docker context"
     fi
+
+    # Handle SSH authentication (agent forwarding or key mounting)
+    # Use process substitution to preserve null bytes
+    while IFS= read -r -d '' ssh_arg; do
+        [[ -n "$ssh_arg" ]] && DOCKER_ARGS+=("$ssh_arg")
+    done < <(handle_ssh_auth)
+
+    # Mount host configurations if enabled
+    # Use process substitution to preserve null bytes
+    while IFS= read -r -d '' config_arg; do
+        [[ -n "$config_arg" ]] && DOCKER_ARGS+=("$config_arg")
+    done < <(mount_host_configs)
 
     # Add any additional environment variables
     if [[ -n "${CLAUDE_MODEL:-}" ]]; then

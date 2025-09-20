@@ -22,40 +22,14 @@ This document tracks potential features, improvements, and ideas for dclaude. No
   - Note: Sessions lost when container exits (use `exit` to leave container)
 - **Complexity**: Low
 
-### SSH & Tool Configuration Mounting
-- **Description**: Mount host's SSH and tool configs into container for seamless integration
-- **Use Case**: Use existing SSH keys, GitHub CLI auth, and other tool configurations
-- **Benefits**:
-  - No need to regenerate SSH keys or re-authenticate tools
-  - Consistent configuration across host and container
-  - Git operations and GitHub CLI work immediately
-  - Docker push/pull from private registries works without re-login
-- **Implementation Considerations**:
-  - Mount multiple config directories (read-only for security):
-    - `~/.ssh` → `/home/claude/.ssh` (SSH keys)
-    - `~/.docker` → `/home/claude/.docker` (Docker registry auth)
-    - `~/.config/gh` → `/home/claude/.config/gh` (GitHub CLI auth)
-    - `~/.gitconfig` → `/home/claude/.gitconfig` (Git configuration)
-    - `~/.npmrc` → `/home/claude/.npmrc` (NPM auth, optional)
-  - Platform detection for paths:
-    - Linux/macOS: `~/.ssh`, `~/.config/`, `~/.docker/`
-    - Windows: `%USERPROFILE%\.ssh`, `%APPDATA%\`, `%USERPROFILE%\.docker\`
-  - Additional tool configs to consider:
-    - `~/.aws` → `/home/claude/.aws` (AWS credentials and config)
-    - `~/.kube` → `/home/claude/.kube` (Kubernetes configs)
-    - `~/.gcloud` → `/home/claude/.gcloud` (Google Cloud config)
-  - Add `gh` CLI to Dockerfile when config mounting is enabled
-  - Optional via environment variable (DCLAUDE_MOUNT_CONFIGS=true)
-- **Tool Integration**:
-  - Docker: Uses mounted `~/.docker/config.json` for registry authentication
-  - GitHub CLI: Pre-installed, uses mounted auth from `~/.config/gh/`
-  - Git: Uses mounted `.gitconfig` and SSH keys
-  - NPM: Optional mounting of `.npmrc` for private registries
-- **Security Notes**:
-  - Should be opt-in feature
-  - All mounts should be read-only
-  - Document which configs are being shared
-- **Complexity**: Low-Medium
+### ✅ IMPLEMENTED: SSH & Tool Configuration Mounting
+- **Status**: Completed on 2025-09-20
+- **Implementation**:
+  - Master switch via `DCLAUDE_MOUNT_CONFIGS=false` (opt-in)
+  - Individual ENV vars for each tool (default to true when master enabled)
+  - Configs mounted read-only for installed tools only
+  - GitHub CLI (gh) added to Dockerfile
+- **Documented**: README.md and CLAUDE.md updated
 
 ### Enhanced Developer Tools Bundle
 - **Description**: Pre-install all commonly used development tools in the container

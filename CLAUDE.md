@@ -11,15 +11,17 @@ AI assistant guidance for working with the dclaude (Dockerized Claude Code) proj
 ## Critical Technical Context
 
 ### Architecture Components
-- **Dockerfile**: Alpine 3.19 base, non-root `claude` user, includes Docker CLI/Compose, Node.js, Python
-- **dclaude script**: Launcher handling platform detection, volume management, path mirroring
+- **Dockerfile**: Alpine 3.19 base, non-root `claude` user, includes Docker CLI/Compose, GitHub CLI, Node.js, Python, socat, su-exec
+- **docker-entrypoint.sh**: Entrypoint script that sets up SSH agent proxy when needed (socat bridge for macOS permissions)
+- **dclaude script**: Launcher handling platform detection, volume management, path mirroring, config mounting
 - **Docker volumes**: `dclaude-config`, `dclaude-cache`, `dclaude-claude` for persistent data
-- **Future**: Consider adding `gh` CLI if mounting host configs (`.ssh`, `.config/gh`)
+- **Config mounting**: Optional read-only mounting of host configs (SSH, Docker, Git, GitHub CLI, NPM)
 
 ### Host Integration Features
 1. **Docker socket mounting** (`/var/run/docker.sock`) - enables container management from within
 2. **Path mirroring** - current directory mounted at same absolute path in container
 3. **Smart network detection** - auto-detects optimal networking mode with caching and platform validation
+4. **Configuration mounting** - optional read-only mounting of host tool configs for seamless authentication
 
 ### Network Detection Algorithm
 
@@ -70,10 +72,37 @@ DCLAUDE_TAG=local ./dclaude --version
 - **dclaude script changes**: Test on multiple platforms if possible
 - **Documentation**: User-facing docs in README.md, technical context here
 
+### SSH Authentication System
+
+The `handle_ssh_auth()` function provides flexible SSH authentication via `DCLAUDE_SSH` environment variable.
+
+**User Documentation**: See README.md "SSH Authentication" section for usage and examples.
+
+#### Technical Implementation
+- Function handles socket mounting for agent forwarding and directory mounting for keys
+- Platform-specific handling: Linux uses direct mount, macOS runs container as root for proxy setup
+- Returns null-separated Docker arguments for safe parsing
+- **SOLVED**: macOS Docker Desktop permissions via socat proxy in entrypoint script
+- Entrypoint automatically creates proxy socket owned by claude user when needed
+
+### Configuration Mounting System
+
+The `mount_host_configs()` function provides selective config mounting controlled by `DCLAUDE_MOUNT_CONFIGS`.
+
+**User Documentation**: See README.md "Configuration Mounting" section for usage and supported configs.
+
+#### Technical Implementation
+- Returns null-separated Docker arguments for safe parsing
+- Validates each config path exists and is readable before mounting
+- All mounts use read-only flag (`:ro`)
+- SSH handled separately via `handle_ssh_auth()` function
+
 ## Security Constraints
 - No sudo in container (removed for security)
 - Docker socket access is privileged - document risks
 - Non-root user with docker group membership only
+- Config mounts are read-only to prevent modification
+- Config mounting is opt-in for security
 
 ## Review Requirements
 When code changes are made:

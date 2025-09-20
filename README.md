@@ -18,6 +18,7 @@ Run Claude Code CLI in a Docker container with full MCP (Model Context Protocol)
 - 🌍 **Cross-Platform**: Works on Linux, macOS, and Windows (with Docker)
 - 🚀 **Auto-Updates**: Automatic image updates on launch
 - 🌐 **Smart Networking**: Auto-detects optimal networking mode for localhost access
+- 🔑 **Config Mounting**: Optional mounting of host SSH keys, Git config, and tool authentication
 
 ## Prerequisites
 
@@ -286,6 +287,114 @@ DCLAUDE_NETWORK=auto dclaude  # default
 | `DCLAUDE_NETWORK` | Network mode | `auto` | `auto`, `host`, `bridge` |
 | `DCLAUDE_REGISTRY` | Docker registry | `docker.io` | Registry URL |
 | `CLAUDE_MODEL` | Claude model to use | (Claude's default) | Model name |
+| **SSH Authentication** | | | |
+| `DCLAUDE_SSH` | SSH authentication mode | `auto` | `auto`, `agent-forwarding`, `key-mount`, `none` |
+| **Config Mounting** | | | |
+| `DCLAUDE_MOUNT_CONFIGS` | Master switch to enable config mounting | `false` | `true`, `false` |
+| `DCLAUDE_MOUNT_DOCKER` | Mount `.docker/` directory | `true`* | `true`, `false` |
+| `DCLAUDE_MOUNT_GIT` | Mount `.gitconfig` file | `true`* | `true`, `false` |
+| `DCLAUDE_MOUNT_GH` | Mount `.config/gh/` for GitHub CLI | `true`* | `true`, `false` |
+| `DCLAUDE_MOUNT_NPM` | Mount `.npmrc` file | `true`* | `true`, `false` |
+
+*When `DCLAUDE_MOUNT_CONFIGS=true`
+
+### SSH Authentication
+
+dclaude provides flexible SSH authentication options via the `DCLAUDE_SSH` environment variable:
+
+#### Authentication Modes
+
+- **`auto`** (default): Automatically detects the best method
+  - Uses agent forwarding if SSH agent is running
+  - Falls back to key mounting if agent not available
+  - Prefers key mounting when `DCLAUDE_MOUNT_CONFIGS=true`
+
+- **`agent-forwarding`**: Forward SSH agent socket to container
+  - **Most secure** - private keys never leave host
+  - Keys remain in agent memory only
+  - **macOS**: Uses automatic socat proxy to handle permissions
+
+- **`key-mount`**: Mount `~/.ssh` directory (read-only)
+  - Works consistently across all platforms
+  - Private keys accessible in container (read-only)
+  - Compatible with existing workflows
+
+- **`none`**: No SSH authentication
+
+#### Usage Examples
+
+```bash
+# Use SSH agent forwarding (most secure, Linux works best)
+DCLAUDE_SSH=agent-forwarding dclaude
+
+# Use key mounting (most compatible)
+DCLAUDE_SSH=key-mount dclaude
+
+# Let dclaude choose the best method
+dclaude  # or DCLAUDE_SSH=auto dclaude
+```
+
+#### Platform Notes
+
+**Linux**: Agent forwarding works with direct socket mounting
+**macOS**: Agent forwarding uses automatic socat proxy (adds ~0.5s startup)
+**Windows**: Limited support; key-mount recommended
+
+#### Testing SSH Access
+
+```bash
+# Test GitHub SSH authentication
+DCLAUDE_SSH=key-mount dclaude "ssh -T git@github.com"
+
+# Clone a private repository
+DCLAUDE_SSH=key-mount dclaude "git clone git@github.com:private/repo.git"
+```
+
+### Configuration Mounting
+
+dclaude can optionally mount your host configuration files to enable seamless tool integration:
+
+#### Enabling Config Mounting
+
+```bash
+# Enable all config mounting (for installed tools)
+DCLAUDE_MOUNT_CONFIGS=true dclaude
+
+# Selectively disable specific configs
+DCLAUDE_MOUNT_CONFIGS=true DCLAUDE_MOUNT_NPM=false dclaude
+```
+
+#### What Gets Mounted
+
+When `DCLAUDE_MOUNT_CONFIGS=true`, the following configurations are mounted (read-only) by default:
+
+- **Docker Config** (`.docker/`): Access private Docker registries with your auth
+- **Git Config** (`.gitconfig`): Your Git user settings and aliases
+- **GitHub CLI** (`.config/gh/`): GitHub CLI authentication and settings
+- **NPM Config** (`.npmrc`): NPM registry authentication (if present)
+
+All mounts are **read-only** for security. Only configurations for tools installed in the container are mounted.
+
+#### Security Considerations
+
+- Config mounting is **disabled by default** for security
+- All configuration mounts are **read-only**
+- Contains sensitive data (SSH keys, auth tokens)
+- Only enable in trusted environments
+- Individual configs can be disabled via environment variables
+
+#### Use Cases
+
+```bash
+# Clone private repositories using your SSH keys
+DCLAUDE_MOUNT_CONFIGS=true dclaude "git clone git@github.com:private/repo.git"
+
+# Use GitHub CLI with your existing authentication
+DCLAUDE_MOUNT_CONFIGS=true dclaude "gh pr create"
+
+# Pull from private Docker registries
+DCLAUDE_MOUNT_CONFIGS=true dclaude "docker pull private.registry.io/image"
+```
 
 ### Docker Socket Access
 
@@ -301,7 +410,7 @@ The container can access Docker on your host system. This enables Claude to:
 ### Container Environment
 - **Base OS**: Alpine Linux 3.19 (minimal footprint)
 - **Languages**: Node.js 20+, Python 3 with pip
-- **Tools**: Docker CLI, Docker Compose, Git, curl, nano
+- **Tools**: Docker CLI, Docker Compose, Git, GitHub CLI (gh), curl, nano
 - **Claude CLI**: Latest version of `@anthropic-ai/claude-code`
 - **Lifecycle**: Ephemeral - fresh container each run, removed on exit
 

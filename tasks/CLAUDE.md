@@ -32,6 +32,11 @@
 | Task # | File | Description | Completion Date | Review Cycles |
 |--------|------|-------------|-----------------|---------------|
 | 001 | [001-host-networking-detection.md](001-host-networking-detection.md) | Smart Host Networking Detection | 2025-09-19 | P1: 2, P2: 3, P3: 1, P4: 1 |
+| 002 | [002-ssh-tool-config-mounting.md](002-ssh-tool-config-mounting.md) | SSH & Tool Configuration Mounting | 2025-09-20 | P1: 1, P2: 1, P3: 1, P4: 1, P5: 1 |
+| 003 | [003-ssh-agent-forwarding.md](003-ssh-agent-forwarding.md) | SSH Agent Forwarding Support | 2025-09-20 | P1: 2, P2: 2, P3: 2, P4: 1, P5: 1 |
+| 004 | [004-ssh-agent-socat-proxy.md](004-ssh-agent-socat-proxy.md) | SSH Agent Forwarding via Socat Proxy | 2025-09-20 | P0: 0, P0.5: 0, P1: 1, P2: 1, P3: 0, P4: 0, P5: 0 |
+| 005 | [005-docker-socket-tty-ssh-fixes.md](005-docker-socket-tty-ssh-fixes.md) | Docker Socket, TTY Detection & SSH Fixes | 2025-09-20 | P1: 1, P2: 1, P3: 2, P4: 1, P5: 1 |
+| 006 | [006-volume-permission-fix.md](006-volume-permission-fix.md) | Volume Permission Fix & Simplification | 2025-09-20 | P1: 1, P2: 1, P3: 1 |
 
 ## Task Template Location
 - Template: `tasks/_TASK.md`

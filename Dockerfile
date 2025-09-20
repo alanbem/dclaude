@@ -12,9 +12,13 @@ RUN apk add --no-cache \
     jq \
     nano \
     openssh-client \
+    socat \
+    su-exec \
     # Docker CLI and compose
     docker-cli \
     docker-cli-compose \
+    # GitHub CLI for PR/issue management
+    github-cli \
     # Node.js for Claude CLI and Node-based MCP servers
     nodejs \
     npm \
@@ -47,11 +51,21 @@ ENV PATH="/home/claude/.npm-global/bin:/home/claude/.local/bin:${PATH}"
 # Install Claude CLI with audit
 RUN npm install -g @anthropic-ai/claude-code
 
-# Create workspace directory
-RUN mkdir -p /home/claude/workspace
+# Create workspace and necessary directories with correct ownership
+# These directories need to exist before Docker tries to mount volumes
+RUN mkdir -p /home/claude/workspace \
+    /home/claude/.claude \
+    /home/claude/.config \
+    /home/claude/.cache
+
+# Declare .claude as a volume for persistent data
+# This ensures credentials and configs persist across container recreations
+VOLUME ["/home/claude/.claude"]
 
 # Set working directory to workspace
 WORKDIR /home/claude/workspace
+
+# No entrypoint needed - proxy runs in separate container
 
 # Environment variables for Claude
 ENV CLAUDE_UNSAFE_TRUST_WORKSPACE=true \
