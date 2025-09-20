@@ -38,6 +38,7 @@
 | 005 | [005-docker-socket-tty-ssh-fixes.md](005-docker-socket-tty-ssh-fixes.md) | Docker Socket, TTY Detection & SSH Fixes | 2025-09-20 | P1: 1, P2: 1, P3: 2, P4: 1, P5: 1 |
 | 006 | [006-volume-permission-fix.md](006-volume-permission-fix.md) | Volume Permission Fix & Simplification | 2025-09-20 | P1: 1, P2: 1, P3: 1 |
 | 007 | [007-unbound-variable-fix.md](007-unbound-variable-fix.md) | Fix Unbound Variable Error | 2025-09-20 | P0: 1, P1: 1, P2: 1 |
+| 008 | [008-claude-config-persistence.md](008-claude-config-persistence.md) | Fix Claude Config Persistence & Setup Screen | 2025-09-21 | P0: 1, P1: 1, P2: 1 |
 
 ## Task Template Location
 - Template: `tasks/_TASK.md`
