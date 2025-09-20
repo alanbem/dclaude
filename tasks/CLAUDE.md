@@ -40,6 +40,7 @@
 | 007 | [007-unbound-variable-fix.md](007-unbound-variable-fix.md) | Fix Unbound Variable Error | 2025-09-20 | P0: 1, P1: 1, P2: 1 |
 | 008 | [008-claude-config-persistence.md](008-claude-config-persistence.md) | Fix Claude Config Persistence & Setup Screen | 2025-09-21 | P0: 1, P1: 1, P2: 1 |
 | 009 | [009-remove-dclaude-arguments.md](009-remove-dclaude-arguments.md) | Remove dclaude Arguments for Pure Pass-through | 2025-09-21 | P1: 1, P2: 1, P3: 1 |
+| 010 | [010-orbstack-network-detection-fix.md](010-orbstack-network-detection-fix.md) | Fix OrbStack Host Network Detection | 2025-09-21 | P0: 0, P1: 1, P2: 1 |
 
 ## Task Template Location
 - Template: `tasks/_TASK.md`
