@@ -155,6 +155,47 @@ find_available_port() {
     echo $((20000 + RANDOM % 45000))
 }
 
+# Portable timeout function that works on both Linux and macOS
+# Usage: run_with_timeout <seconds> <command...>
+run_with_timeout() {
+    local timeout_seconds=$1
+    shift
+
+    # Try to use timeout command if available (Linux, brew-installed coreutils)
+    if command -v timeout &>/dev/null; then
+        timeout "$timeout_seconds" "$@"
+        return $?
+    elif command -v gtimeout &>/dev/null; then
+        # macOS with coreutils installed via Homebrew
+        gtimeout "$timeout_seconds" "$@"
+        return $?
+    else
+        # Fallback: run command in background and kill after timeout
+        local pid
+        "$@" &
+        pid=$!
+
+        # Sleep in background and kill the process after timeout
+        (
+            sleep "$timeout_seconds"
+            kill -TERM "$pid" 2>/dev/null || true
+        ) &
+        local timer_pid=$!
+
+        # Wait for the command to finish
+        local result
+        if wait "$pid" 2>/dev/null; then
+            result=$?
+            kill -TERM "$timer_pid" 2>/dev/null || true
+            wait "$timer_pid" 2>/dev/null || true
+            return $result
+        else
+            # Command failed or was killed
+            return 124  # Standard timeout exit code
+        fi
+    fi
+}
+
 # Detect network capability (host vs bridge)
 detect_network_capability() {
     local cache_dir="${HOME}/.dclaude"
@@ -220,7 +261,7 @@ detect_network_capability() {
 
     # Test 1: Basic host networking support
     debug "Test 1: Basic host networking support"
-    if ! timeout "$test_timeout" docker run --rm --network host alpine:3.19 \
+    if ! run_with_timeout "$test_timeout" docker run --rm --network host alpine:3.19 \
         sh -c 'ip addr show lo | grep -q "127\.0\.0\.1"' &>/dev/null; then
         debug "Host networking not supported (basic test failed)"
         trap - EXIT
@@ -270,7 +311,7 @@ detect_network_capability() {
 
     # Test client connection
     local test_result="bridge"
-    if timeout 5 docker run --rm --network host alpine:3.19 \
+    if run_with_timeout 5 docker run --rm --network host alpine:3.19 \
         sh -c "echo '' | nc localhost $test_port" &>/dev/null; then
         test_result="host"
         debug "Host networking fully supported"
