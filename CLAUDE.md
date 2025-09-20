@@ -2,6 +2,15 @@
 
 AI assistant guidance for working with the dclaude (Dockerized Claude Code) project.
 
+## Code Style Guidelines
+
+### Comments and Documentation
+- DO NOT leave conversation-style comments in code (e.g., "Removed X", "User requested Y")
+- DO NOT use code comments as a changelog or conversation record
+- Keep code clean - changes are tracked in git history, not comments
+- Technical comments should explain WHY something works a certain way, not WHAT was changed
+- Communication with user happens in chat, not in code comments
+
 ## Core Understanding
 
 **Project Purpose**: Containerizes Claude Code CLI to run in Docker with host-like capabilities while maintaining isolation.

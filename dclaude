@@ -339,6 +339,18 @@ create_volumes() {
 
 # Pull or update the Docker image
 update_image() {
+    # Skip updates if DCLAUDE_NO_UPDATE is set
+    if [[ "${DCLAUDE_NO_UPDATE:-false}" == "true" ]]; then
+        debug "Skipping image update (DCLAUDE_NO_UPDATE=true)"
+        # Ensure image exists
+        if ! docker image inspect "$IMAGE" &> /dev/null; then
+            error "Docker image $IMAGE not found locally and updates disabled."
+            error "Either unset DCLAUDE_NO_UPDATE or pull the image manually."
+            exit 1
+        fi
+        return
+    fi
+
     local current_id=""
     local new_id=""
 
@@ -624,176 +636,11 @@ mount_host_configs() {
     fi
 }
 
-# Show version
-show_version() {
-    check_docker
-    check_docker_running
-
-    if docker run --rm "$IMAGE" --version 2>/dev/null; then
-        exit 0
-    else
-        echo "dclaude version 0.0.1 (Docker image unavailable)"
-        exit 0
-    fi
-}
-
-# Show help
-show_help() {
-    cat << EOF
-dclaude - Dockerized Claude Code Launcher
-
-Usage:
-    dclaude [options] [claude-args...]
-
-Options:
-    --version       Show version information
-    --update        Force update the Docker image
-    --help          Show this help message
-    --debug         Run with debug output
-    --force-host    Force use of host networking mode
-    --force-bridge  Force use of bridge networking mode
-
-Environment Variables:
-    DCLAUDE_TAG           Docker image tag to use (default: latest)
-    DCLAUDE_DEBUG         Enable debug output (default: false)
-    DCLAUDE_DOCKER_SOCKET Docker socket path (default: /var/run/docker.sock)
-    DCLAUDE_NETWORK       Network mode: host, bridge, or auto (default: auto)
-
-    SSH Authentication:
-    DCLAUDE_SSH           SSH auth mode: auto, agent-forwarding, key-mount, none (default: auto)
-                          - auto: Detect best method (agent if available, else keys)
-                          - agent-forwarding: Use SSH agent (more secure, no keys in container)
-                          - key-mount: Mount ~/.ssh directory (backward compatible)
-                          - none: No SSH authentication
-
-    Config Mounting (requires DCLAUDE_MOUNT_CONFIGS=true):
-    DCLAUDE_MOUNT_CONFIGS Master switch to enable config mounting (default: false)
-    DCLAUDE_MOUNT_DOCKER  Mount .docker/ directory (default: true when master enabled)
-    DCLAUDE_MOUNT_GIT     Mount .gitconfig file (default: true when master enabled)
-    DCLAUDE_MOUNT_GH      Mount .config/gh/ for GitHub CLI (default: true when master enabled)
-    DCLAUDE_MOUNT_NPM     Mount .npmrc file (default: true when master enabled)
-
-Network Modes:
-    auto    Auto-detect best available networking mode (default)
-    host    Use host networking (requires platform support)
-    bridge  Use bridge networking (limited localhost access)
-
-Examples:
-    dclaude                         # Start Claude with auto-detected networking
-    dclaude --force-host           # Force host networking (full localhost access)
-    dclaude --force-bridge         # Force bridge networking (limited localhost access)
-    dclaude "fix the bug"          # Run Claude with a specific command
-    dclaude --version              # Show version information
-    dclaude --update               # Update Docker image to latest version
-    DCLAUDE_DEBUG=true dclaude     # Run with detailed debug output
-    DCLAUDE_NETWORK=host dclaude   # Set network mode via environment variable
-
-    # SSH Authentication Options
-    DCLAUDE_SSH=agent-forwarding dclaude  # Use SSH agent (most secure)
-    DCLAUDE_SSH=key-mount dclaude         # Mount SSH keys (backward compatible)
-
-    # Mount host configurations for seamless tool integration
-    DCLAUDE_MOUNT_CONFIGS=true dclaude  # Mount all configs for installed tools
-
-    # Selectively disable specific configs
-    DCLAUDE_MOUNT_CONFIGS=true DCLAUDE_MOUNT_NPM=false dclaude  # Mount all except NPM
-
-    # Only mount specific configs
-    DCLAUDE_MOUNT_CONFIGS=true DCLAUDE_MOUNT_DOCKER=false DCLAUDE_MOUNT_NPM=false dclaude
-
-Use Cases:
-    # Development with local services (databases, APIs)
-    dclaude --force-host           # Enables access to localhost:3000, localhost:5432, etc.
-
-    # Isolated development (no localhost dependencies)
-    dclaude --force-bridge         # Safer mode when you don't need localhost access
-
-    # Debugging networking issues
-    DCLAUDE_DEBUG=true dclaude     # Shows network detection and Docker configuration
-
-    # Using existing SSH keys and tool authentication
-    DCLAUDE_MOUNT_CONFIGS=true dclaude  # Use your SSH keys, GitHub auth, Docker logins
-
-Security Note:
-    This tool mounts the Docker socket, granting the container access to Docker.
-    When DCLAUDE_MOUNT_CONFIGS is enabled, it also mounts sensitive configuration
-    files (SSH keys, auth tokens) as read-only. Only use in trusted environments.
-
-For more information, visit:
-    https://github.com/alanbem/dclaude
-EOF
-}
 
 # Main execution
 main() {
-    # First, scan all arguments to detect conflicts before processing any flags
-    local has_force_host=false
-    local has_force_bridge=false
-
-    # Safe iteration over arguments (handles empty list)
-    for arg in "$@"; do
-        case "$arg" in
-            --force-host)
-                has_force_host=true
-                ;;
-            --force-bridge)
-                has_force_bridge=true
-                ;;
-        esac
-    done
-
-    # Check for conflicting flags
-    if [[ "$has_force_host" == "true" && "$has_force_bridge" == "true" ]]; then
-        error "Conflicting flags: cannot use both --force-host and --force-bridge"
-        exit 1
-    fi
-
-    # Parse special flags (process them iteratively instead of recursively)
-    local processed_args=()
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --version)
-                show_version
-                ;;
-            --update)
-                check_docker
-                check_docker_running
-                docker pull "$IMAGE"
-                success "Image updated successfully."
-                exit 0
-                ;;
-            --debug)
-                export DCLAUDE_DEBUG=true
-                shift
-                ;;
-            --force-host)
-                export DCLAUDE_NETWORK=host
-                shift
-                ;;
-            --force-bridge)
-                export DCLAUDE_NETWORK=bridge
-                shift
-                ;;
-            --help)
-                show_help
-                exit 0
-                ;;
-            *)
-                # Collect remaining arguments for Claude
-                processed_args+=("$1")
-                shift
-                ;;
-        esac
-    done
-
-    # Set remaining arguments for Claude (handle empty array case)
-    if [[ ${#processed_args[@]} -gt 0 ]]; then
-        set -- "${processed_args[@]}"
-    else
-        set --
-    fi
-
-    # Docker socket warning will be shown after detection
+    # No argument parsing - pass everything through to Claude
+    # All arguments are preserved as-is for Claude
 
     # Check prerequisites
     check_docker
