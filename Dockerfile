@@ -89,6 +89,6 @@ LABEL maintainer="alanbem" \
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD claude --version || exit 1
 
-# Default command
+# Default command - start interactive Claude when no args provided
 ENTRYPOINT ["claude"]
-CMD ["--help"]
+CMD []
