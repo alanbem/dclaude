@@ -56,7 +56,8 @@ RUN npm install -g @anthropic-ai/claude-code
 RUN mkdir -p /home/claude/workspace \
     /home/claude/.claude \
     /home/claude/.config \
-    /home/claude/.cache
+    /home/claude/.cache \
+    && ln -s /home/claude/.claude/.claude.json /home/claude/.claude.json
 
 # Declare .claude as a volume for persistent data
 # This ensures credentials and configs persist across container recreations
