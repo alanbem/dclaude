@@ -92,5 +92,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD claude --version || exit 1
 
 # Use entrypoint script for config persistence
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["claude"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh", "claude"]
+CMD []
