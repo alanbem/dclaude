@@ -445,7 +445,7 @@ get_host_path() {
 # Handle SSH authentication based on DCLAUDE_SSH mode
 # Setup SSH proxy container for macOS
 setup_ssh_proxy_container() {
-    local proxy_container="dclaude-ssh-proxy"
+    local proxy_container="dclaude-ssh-proxy-$(id -u)"
 
     # Check if proxy container already exists and is running
     if docker ps -q -f name="^${proxy_container}$" 2>/dev/null | grep -q .; then
@@ -474,7 +474,7 @@ setup_ssh_proxy_container() {
 
             # Create proxy socket accessible to all users
             rm -f /tmp/ssh-proxy/agent
-            socat UNIX-LISTEN:/tmp/ssh-proxy/agent,fork,mode=666 \
+            socat UNIX-LISTEN:/tmp/ssh-proxy/agent,fork,mode=660 \
                   UNIX-CONNECT:/run/host-services/ssh-auth.sock
         ' >/dev/null 2>&1
 
