@@ -56,17 +56,18 @@ RUN npm install -g @anthropic-ai/claude-code
 RUN mkdir -p /home/claude/workspace \
     /home/claude/.claude \
     /home/claude/.config \
-    /home/claude/.cache \
-    && ln -s /home/claude/.claude/.claude.json /home/claude/.claude.json
+    /home/claude/.cache
 
 # Declare .claude as a volume for persistent data
 # This ensures credentials and configs persist across container recreations
 VOLUME ["/home/claude/.claude"]
 
+# Copy entrypoint script
+COPY --chown=claude:claude docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Set working directory to workspace
 WORKDIR /home/claude/workspace
-
-# No entrypoint needed - proxy runs in separate container
 
 # Environment variables for Claude
 ENV CLAUDE_UNSAFE_TRUST_WORKSPACE=true \
@@ -90,6 +91,6 @@ LABEL maintainer="alanbem" \
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD claude --version || exit 1
 
-# Default command - start interactive Claude when no args provided
-ENTRYPOINT ["claude"]
-CMD []
+# Use entrypoint script for config persistence
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["claude"]
