@@ -1,0 +1,108 @@
+# Dockerized Claude Code - Optimized Multi-Stage Build
+# Minimal Alpine-based container with Claude CLI, Docker, and MCP support
+
+# Build stage - compile dependencies
+FROM alpine:3.19 AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    nodejs \
+    npm \
+    make \
+    g++ \
+    python3-dev
+
+# Configure npm for global packages
+RUN npm config set prefix /usr/local
+
+# Install Claude CLI with specific version
+RUN npm install -g @anthropic-ai/claude-code@1.0.120
+
+# Runtime stage - minimal final image
+FROM alpine:3.19
+
+# Install essential runtime packages only
+RUN apk add --no-cache \
+    # Core utilities
+    bash \
+    curl \
+    git \
+    jq \
+    nano \
+    openssh-client \
+    socat \
+    su-exec \
+    # Docker CLI and compose
+    docker-cli \
+    docker-cli-compose \
+    # GitHub CLI for PR/issue management
+    github-cli \
+    # Node.js runtime only (no npm)
+    nodejs \
+    # Python runtime for Python-based MCP servers
+    python3 \
+    py3-pip
+
+# Copy Claude CLI from builder stage
+COPY --from=builder /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@anthropic-ai/claude-code
+COPY --from=builder /usr/local/bin/claude /usr/local/bin/claude
+
+# Create non-root user for running Claude
+RUN adduser -D -s /bin/bash claude \
+    && addgroup -S docker 2>/dev/null || true \
+    && addgroup claude docker
+
+# Switch to claude user
+USER claude
+WORKDIR /home/claude
+
+# Set up paths for the claude user
+RUN mkdir -p /home/claude/.npm-global \
+    && echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.bashrc \
+    && echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.profile
+
+# Set PATH for all tools
+ENV PATH="/home/claude/.npm-global/bin:/home/claude/.local/bin:${PATH}"
+
+# Create workspace and necessary directories with correct ownership
+RUN mkdir -p /home/claude/workspace \
+    /home/claude/.claude \
+    /home/claude/.config \
+    /home/claude/.cache
+
+# Declare .claude as a volume for persistent data
+VOLUME ["/home/claude/.claude"]
+
+# Copy entrypoint script
+COPY --chown=claude:claude docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Set working directory to workspace
+WORKDIR /home/claude/workspace
+
+# Environment variables for Claude
+# Note: Consider removing CLAUDE_UNSAFE_TRUST_WORKSPACE in production
+ENV CLAUDE_UNSAFE_TRUST_WORKSPACE=true \
+    MCP_TIMEOUT=30000 \
+    CLAUDE_BASH_TIMEOUT=600000 \
+    CLAUDE_READ_TIMEOUT=300000 \
+    CLAUDE_EDIT_TIMEOUT=300000 \
+    CLAUDE_WRITE_TIMEOUT=300000 \
+    CLAUDE_WEBFETCH_TIMEOUT=300000 \
+    TERM=xterm-256color
+
+# Labels
+LABEL maintainer="alanbem" \
+      description="Dockerized Claude Code with MCP support" \
+      version="0.0.1" \
+      org.opencontainers.image.source="https://github.com/alanbem/dclaude" \
+      org.opencontainers.image.documentation="https://github.com/alanbem/dclaude/blob/main/README.md" \
+      org.opencontainers.image.licenses="MIT"
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD claude --version || exit 1
+
+# Use entrypoint script for config persistence
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh", "claude"]
+CMD []
