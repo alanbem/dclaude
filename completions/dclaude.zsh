@@ -1,56 +1,39 @@
 #!/bin/zsh
 # Zsh completion for dclaude
 # Install: copy to ~/.zsh/completions/ or add to fpath
+#
+# Note: dclaude passes all arguments directly to Claude CLI
+# Use environment variables to control dclaude behavior:
+#   DCLAUDE_NETWORK=host dclaude    # Force host networking
+#   DCLAUDE_DEBUG=true dclaude      # Enable debug output
+#   DCLAUDE_NO_UPDATE=true dclaude  # Skip image updates
 
 #compdef dclaude
 
 _dclaude() {
-    local -a opts
-    opts=(
-        '--help[Show help message]'
-        '--version[Show version information]'
-        '--update[Force update the Docker image]'
-        '--debug[Run with debug output]'
-        '--force-host[Force use of host networking mode]'
-        '--force-bridge[Force use of bridge networking mode]'
-    )
-
-    _arguments -C \
-        '1: :_dclaude_commands' \
-        '*::arg:->args' \
-        && ret=0
-
-    case $state in
-        args)
-            _arguments $opts
-            _files
-            ;;
-    esac
+    # Since dclaude passes all arguments to Claude,
+    # we just provide file/directory completion
+    _files
 }
 
-_dclaude_commands() {
-    local commands
-    commands=(
-        '--help:Show help message'
-        '--version:Show version information'
-        '--update:Update Docker image'
-        '--debug:Enable debug mode'
-        '--force-host:Force host networking mode'
-        '--force-bridge:Force bridge networking mode'
-    )
-    _describe 'command' commands
-}
-
-# Environment variables
-_dclaude_env() {
-    local env_vars
-    env_vars=(
-        'DCLAUDE_TAG:Docker image tag'
-        'DCLAUDE_DEBUG:Enable debug output'
-        'DCLAUDE_DOCKER_SOCKET:Docker socket path'
-        'DCLAUDE_NETWORK:Network mode'
-    )
-    _describe 'environment' env_vars
+# Environment variables that can be set (for reference)
+_dclaude_env_info() {
+    cat << 'EOF'
+Environment variables for dclaude:
+  DCLAUDE_TAG              Docker image tag to use
+  DCLAUDE_DEBUG            Enable debug output (true/false)
+  DCLAUDE_NO_UPDATE        Skip image update check (true/false)
+  DCLAUDE_DOCKER_SOCKET    Docker socket path
+  DCLAUDE_NETWORK          Network mode (auto/host/bridge)
+  DCLAUDE_REGISTRY         Docker registry
+  DCLAUDE_SSH              SSH auth mode (auto/agent-forwarding/key-mount/none)
+  DCLAUDE_MOUNT_CONFIGS    Enable config mounting (true/false)
+  DCLAUDE_MOUNT_DOCKER     Mount .docker/ directory
+  DCLAUDE_MOUNT_GIT        Mount .gitconfig file
+  DCLAUDE_MOUNT_GH         Mount .config/gh/ for GitHub CLI
+  DCLAUDE_MOUNT_NPM        Mount .npmrc file
+  CLAUDE_MODEL             Claude model to use
+EOF
 }
 
 compdef _dclaude dclaude

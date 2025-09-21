@@ -1,29 +1,27 @@
 #!/bin/bash
 # Bash completion for dclaude
 # Install: source this file in your .bashrc or copy to /etc/bash_completion.d/
+#
+# Note: dclaude passes all arguments directly to Claude CLI
+# Use environment variables to control dclaude behavior:
+#   DCLAUDE_NETWORK=host dclaude    # Force host networking
+#   DCLAUDE_DEBUG=true dclaude      # Enable debug output
+#   DCLAUDE_NO_UPDATE=true dclaude  # Skip image updates
 
 _dclaude_completions() {
-    local cur prev opts
+    local cur prev
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    # Main options
-    opts="--help --version --update --debug --force-host --force-bridge"
+    # Since dclaude passes all arguments to Claude,
+    # we just provide basic file completion
+    COMPREPLY=( $(compgen -f -- ${cur}) )
 
-    # Environment variables that can be set
-    env_vars="DCLAUDE_TAG= DCLAUDE_DEBUG= DCLAUDE_DOCKER_SOCKET= DCLAUDE_NETWORK="
-
-    case "${prev}" in
-        dclaude)
-            COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
-            return 0
-            ;;
-        *)
-            # Also complete file paths for Claude commands
-            COMPREPLY=( $(compgen -f -- ${cur}) )
-            ;;
-    esac
+    # Optionally, also complete directories
+    if [[ -d "${cur}" ]]; then
+        COMPREPLY+=( $(compgen -d -- ${cur}) )
+    fi
 }
 
 # Only set completion if complete command is available

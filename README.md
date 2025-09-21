@@ -42,7 +42,7 @@ docker build -t alanbem/dclaude:latest .
 chmod +x dclaude
 
 # Run dclaude
-./dclaude --help
+./dclaude
 
 # (Optional) Install globally
 sudo cp dclaude /usr/local/bin/
@@ -53,7 +53,7 @@ sudo cp dclaude /usr/local/bin/
 ```bash
 # Note: Package will be published to NPM registry soon
 npm install -g @alanbem/dclaude
-dclaude --help
+dclaude
 ```
 
 ### Option 3: Use Docker Directly
@@ -64,7 +64,7 @@ docker run --rm -it \
   -v "$(pwd):$(pwd)" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -w "$(pwd)" \
-  alanbem/dclaude --help
+  alanbem/dclaude
 ```
 
 ## Usage
@@ -78,18 +78,20 @@ dclaude
 # Run Claude with a prompt
 dclaude "fix the bug in main.js"
 
-# Show version
-dclaude --version
-
-# Update Docker image
-dclaude --update
+# All arguments pass directly to Claude CLI
+dclaude --version  # Shows Claude's version
+dclaude --help     # Shows Claude's help
+dclaude -p "prompt" # Claude's print mode
 
 # Enable debug mode
 DCLAUDE_DEBUG=true dclaude
 
-# Force specific networking modes
-dclaude --force-host    # Full localhost access
-dclaude --force-bridge  # Limited localhost access
+# Skip image updates (faster startup)
+DCLAUDE_NO_UPDATE=true dclaude
+
+# Force specific networking modes via environment
+DCLAUDE_NETWORK=host dclaude   # Force host networking
+DCLAUDE_NETWORK=bridge dclaude # Force bridge networking
 ```
 
 ### How dclaude Works
@@ -112,7 +114,7 @@ dclaude creates a containerized environment that closely emulates your host syst
    - **Host Mode**: Full localhost access when platform supports it
    - **Bridge Mode**: Fallback with limited localhost access
    - **Caching**: Network capability cached for 24 hours for faster startup
-   - **Override Options**: Command-line flags to force specific modes
+   - **Override Options**: Environment variables to force specific modes
 
 4. **Persistent Data**: Configuration and cache stored in Docker volumes
    - `dclaude-config`: Configuration files
@@ -236,14 +238,14 @@ dclaude "test the API at http://host.docker.internal:3000"
 
 #### Command-Line Control
 
-You can override auto-detection with command-line flags:
+You can override auto-detection with environment variables:
 
 ```bash
 # Force host networking (full localhost access)
-dclaude --force-host "test localhost:3000"
+DCLAUDE_NETWORK=host dclaude "test localhost:3000"
 
 # Force bridge networking (isolated mode)
-dclaude --force-bridge "safer isolated development"
+DCLAUDE_NETWORK=bridge dclaude "safer isolated development"
 
 # Use auto-detection (default)
 dclaude "let dclaude choose the best mode"
@@ -270,7 +272,7 @@ DCLAUDE_NETWORK=auto dclaude  # default
   - Docker Desktop with host networking beta feature enabled
   - OrbStack (recommended Docker Desktop alternative)
 - Bridge mode fallback for standard Docker Desktop
-- Check `dclaude --debug` output for detection results
+- Check debug output with `DCLAUDE_DEBUG=true dclaude` for detection results
 
 **Windows**:
 - Host networking available with Docker Desktop beta features
@@ -283,6 +285,7 @@ DCLAUDE_NETWORK=auto dclaude  # default
 |----------|-------------|---------|--------|
 | `DCLAUDE_TAG` | Docker image tag to use | `latest` | Any valid tag |
 | `DCLAUDE_DEBUG` | Enable debug output | `false` | `true`, `false` |
+| `DCLAUDE_NO_UPDATE` | Skip image update check | `false` | `true`, `false` |
 | `DCLAUDE_DOCKER_SOCKET` | Docker socket path | `/var/run/docker.sock` | Valid socket path |
 | `DCLAUDE_NETWORK` | Network mode | `auto` | `auto`, `host`, `bridge` |
 | `DCLAUDE_REGISTRY` | Docker registry | `docker.io` | Registry URL |
@@ -488,13 +491,13 @@ dclaude
 DCLAUDE_DEBUG=true dclaude
 
 # Try forcing host mode (if supported)
-dclaude --force-host
+DCLAUDE_NETWORK=host dclaude
 
 # On macOS: Enable host networking in Docker Desktop or use OrbStack
 # On Windows: Enable host networking beta feature in Docker Desktop
 
 # Fallback: Use bridge mode with host.docker.internal
-dclaude --force-bridge
+DCLAUDE_NETWORK=bridge dclaude
 # Then access services via host.docker.internal:PORT
 ```
 
