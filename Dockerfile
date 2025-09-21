@@ -70,6 +70,9 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 WORKDIR /home/claude/workspace
 
 # Environment variables for Claude
+# CLAUDE_UNSAFE_TRUST_WORKSPACE: Allows Claude to work in any directory without
+# workspace trust prompts. This is safe in our containerized environment since
+# the container is ephemeral and isolated. Set to true for seamless operation.
 ENV CLAUDE_UNSAFE_TRUST_WORKSPACE=true \
     MCP_TIMEOUT=30000 \
     CLAUDE_BASH_TIMEOUT=600000 \

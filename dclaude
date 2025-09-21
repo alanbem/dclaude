@@ -105,13 +105,16 @@ detect_docker_socket() {
     done
 
     # If no socket found, try to get from Docker context
-    if command -v docker &> /dev/null; then
-        local context_socket
-        context_socket=$(docker context inspect 2>/dev/null | jq -r '.[0].Endpoints.docker.Host' | sed 's|unix://||' 2>/dev/null) || true
-        if [[ -n "$context_socket" ]] && [[ -S "$context_socket" ]]; then
-            debug "Docker socket found via context: $context_socket"
-            echo "$context_socket"
-            return 0
+    if command -v docker &> /dev/null && command -v jq &> /dev/null; then
+        local context_output context_socket
+        context_output=$(docker context inspect 2>/dev/null || true)
+        if [[ -n "$context_output" ]]; then
+            context_socket=$(echo "$context_output" | jq -r '.[0].Endpoints.docker.Host' 2>/dev/null | sed 's|unix://||' 2>/dev/null) || true
+            if [[ -n "$context_socket" ]] && [[ -S "$context_socket" ]]; then
+                debug "Docker socket found via context: $context_socket"
+                echo "$context_socket"
+                return 0
+            fi
         fi
     fi
 
@@ -145,7 +148,24 @@ find_available_port() {
     local port
 
     for ((port=start_port; port<=end_port; port++)); do
-        if ! netstat -ln 2>/dev/null | grep -q ":$port " && ! lsof -i ":$port" &>/dev/null; then
+        # Try multiple methods for port checking for better compatibility
+        local port_in_use=false
+
+        # Try netstat (works on most platforms)
+        if command -v netstat &>/dev/null; then
+            if netstat -an 2>/dev/null | grep -qE "[.:]$port\s+(LISTEN|ESTABLISHED)" 2>/dev/null; then
+                port_in_use=true
+            fi
+        fi
+
+        # Also try lsof if available (more reliable on macOS)
+        if ! $port_in_use && command -v lsof &>/dev/null; then
+            if lsof -i ":$port" &>/dev/null; then
+                port_in_use=true
+            fi
+        fi
+
+        if ! $port_in_use; then
             echo "$port"
             return 0
         fi
@@ -292,7 +312,8 @@ detect_network_capability() {
     local max_wait=50  # 5 seconds (50 * 0.1 seconds)
 
     while [[ $wait_count -lt $max_wait ]]; do
-        if docker exec "$server_container" sh -c "netstat -ln 2>/dev/null | grep -q \":$test_port \"" &>/dev/null; then
+        # Use more portable netstat options for Alpine Linux
+        if docker exec "$server_container" sh -c "netstat -tuln 2>/dev/null | grep -q \":$test_port \"" &>/dev/null; then
             ready=true
             debug "Test server is ready after $((wait_count * 100))ms"
             break
