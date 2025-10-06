@@ -19,6 +19,9 @@ Run Claude Code CLI in a Docker container with full MCP (Model Context Protocol)
 - 🚀 **Auto-Updates**: Automatic image updates on launch
 - 🌐 **Smart Networking**: Auto-detects optimal networking mode for localhost access
 - 🔑 **Config Mounting**: Optional mounting of host SSH keys, Git config, and tool authentication
+- 🍺 **Homebrew Support**: Full Homebrew/Linuxbrew integration for package management
+- 💾 **Persistent Containers**: Optional container persistence for development environments
+- 🔌 **Direct Shell Access**: Execute commands directly in containers via exec subcommand
 
 ## Prerequisites
 
@@ -72,7 +75,7 @@ docker run --rm -it \
 ### Basic Commands
 
 ```bash
-# Start Claude interactively
+# Start Claude interactively (ephemeral)
 dclaude
 
 # Run Claude with a prompt
@@ -93,6 +96,36 @@ DCLAUDE_NO_UPDATE=true dclaude
 DCLAUDE_NETWORK=host dclaude   # Force host networking
 DCLAUDE_NETWORK=bridge dclaude # Force bridge networking
 ```
+
+### Persistent Containers
+
+Create containers that persist between sessions:
+
+```bash
+# Create a persistent container
+DCLAUDE_RM=false dclaude
+
+# Reuse the same container (automatically detected)
+DCLAUDE_RM=false dclaude
+
+# Execute commands directly in the container
+dclaude exec                    # Open bash shell
+dclaude exec npm install        # Run npm command
+dclaude exec brew install git   # Install tools with Homebrew
+
+# Back to ephemeral mode (default)
+dclaude
+```
+
+**When to use persistent containers:**
+- Installing tools that should persist (Homebrew packages, global npm modules)
+- Development environments that need setup (databases, services)
+- Faster startup times (no container recreation)
+- Preserving system-level changes
+
+**Ephemeral vs Persistent:**
+- **Ephemeral (default)**: `DCLAUDE_RM=true` - Container removed after exit
+- **Persistent**: `DCLAUDE_RM=false` - Container reused across sessions
 
 ### How dclaude Works
 
@@ -117,16 +150,19 @@ dclaude creates a containerized environment that closely emulates your host syst
    - **Override Options**: Environment variables to force specific modes
 
 4. **Persistent Data**: Configuration and cache stored in Docker volumes
-   - `dclaude-config`: Configuration files
-   - `dclaude-cache`: Cache data
-   - `dclaude-claude`: Claude-specific data
-   - Data persists between container runs
+   - `dclaude-claude`: Claude-specific data (API keys, session state)
+   - Data persists between container runs regardless of mode
 
-5. **Ephemeral Containers**: Each `dclaude` run creates a fresh container
-   - Container is removed automatically when you exit
-   - System packages installed during session are lost
-   - File changes in mounted directories are preserved
-   - Use volumes for data that needs to persist
+5. **Flexible Container Modes**: Choose between ephemeral or persistent containers
+   - **Ephemeral (default)**: Fresh container each run, auto-removed on exit
+     - Clean slate every time
+     - System packages not preserved
+     - Best for quick tasks and CI/CD
+   - **Persistent** (`DCLAUDE_RM=false`): Reusable containers per directory
+     - Container persists and can be restarted
+     - Installed tools (Homebrew, npm packages) preserved
+     - Faster startup (no container recreation)
+     - Best for development environments
 
 #### Path Mirroring Explained
 
@@ -284,6 +320,7 @@ DCLAUDE_NETWORK=auto dclaude  # default
 | Variable | Description | Default | Values |
 |----------|-------------|---------|--------|
 | `DCLAUDE_TAG` | Docker image tag to use | `latest` | Any valid tag |
+| `DCLAUDE_RM` | Remove container on exit | `true` | `true`, `false` |
 | `DCLAUDE_DEBUG` | Enable debug output | `false` | `true`, `false` |
 | `DCLAUDE_NO_UPDATE` | Skip image update check | `false` | `true`, `false` |
 | `DCLAUDE_DOCKER_SOCKET` | Docker socket path | `/var/run/docker.sock` | Valid socket path |
@@ -408,14 +445,47 @@ The container can access Docker on your host system. This enables Claude to:
 
 **⚠️ Security Note**: Docker socket mounting grants significant privileges. Only use in trusted environments.
 
+### Homebrew Support
+
+dclaude includes full Homebrew/Linuxbrew integration for package management:
+
+```bash
+# Create a persistent container first
+DCLAUDE_RM=false dclaude
+
+# Install packages with Homebrew
+dclaude exec brew install ripgrep fd bat
+dclaude exec brew install node@18
+dclaude exec brew install postgresql
+
+# Packages persist across sessions
+dclaude exec which rg  # /home/linuxbrew/.linuxbrew/bin/rg
+
+# Use installed tools in Claude
+DCLAUDE_RM=false dclaude "search for TODO using ripgrep"
+```
+
+**How it works:**
+- Homebrew installed in `/home/linuxbrew/.linuxbrew`
+- Available to `claude` user via group membership
+- Packages installed with `dclaude exec brew install` persist in containers
+- Requires persistent containers (`DCLAUDE_RM=false`)
+
+**Common use cases:**
+- Install language toolchains (Go, Rust, etc.)
+- Add development tools (jq, yq, httpie)
+- Install databases (PostgreSQL, Redis, MongoDB)
+- Add build tools (cmake, make, gcc)
+
 ## What's Included
 
 ### Container Environment
-- **Base OS**: Alpine Linux 3.19 (minimal footprint)
+- **Base OS**: Ubuntu 24.04 LTS (compatible with Homebrew)
 - **Languages**: Node.js 20+, Python 3 with pip
+- **Package Managers**: Homebrew/Linuxbrew, npm, pip
 - **Tools**: Docker CLI, Docker Compose, Git, GitHub CLI (gh), curl, nano
 - **Claude CLI**: Latest version of `@anthropic-ai/claude-code`
-- **Lifecycle**: Ephemeral - fresh container each run, removed on exit
+- **Lifecycle**: Ephemeral by default, optional persistent mode
 
 ### Persistent Data
 
@@ -449,6 +519,103 @@ docker build -t alanbem/dclaude:local .
 
 # Use the local image
 DCLAUDE_TAG=local ./dclaude
+```
+
+## Common Workflows
+
+### Quick Tasks (Ephemeral Mode)
+
+For one-off tasks and quick interactions:
+
+```bash
+# Fix code issues
+dclaude "fix linting errors in src/"
+
+# Generate documentation
+dclaude "create API documentation from comments"
+
+# Run tests
+dclaude "run the test suite and explain failures"
+
+# Code review
+dclaude "review the changes in git diff"
+```
+
+### Development Environment (Persistent Mode)
+
+For longer development sessions with installed tools:
+
+```bash
+# Initial setup - create persistent container
+DCLAUDE_RM=false dclaude
+
+# Install development tools
+dclaude exec brew install ripgrep fd exa
+dclaude exec npm install -g typescript eslint prettier
+
+# Work on your project
+DCLAUDE_RM=false dclaude "refactor the authentication module"
+
+# Access shell directly
+dclaude exec  # Opens bash in the container
+
+# Run commands without Claude
+dclaude exec npm test
+dclaude exec rg "TODO" src/
+```
+
+### Full-Stack Development
+
+Using persistent containers for complex setups:
+
+```bash
+# Setup development environment
+DCLAUDE_RM=false dclaude
+
+# Install required tools
+dclaude exec brew install postgresql node@18 redis
+dclaude exec npm install -g pm2
+
+# Start services in background (via shell)
+dclaude exec
+# Inside container:
+brew services start postgresql
+brew services start redis
+pm2 start app.js
+exit
+
+# Use Claude with running services
+DCLAUDE_RM=false dclaude "migrate the database schema"
+DCLAUDE_RM=false dclaude "test the API endpoints on localhost:3000"
+```
+
+### CI/CD Integration
+
+Use ephemeral mode for clean, reproducible builds:
+
+```bash
+# In your CI pipeline
+dclaude "run tests and build production bundle"
+dclaude "lint all files and report issues"
+dclaude "generate changelog from git commits"
+```
+
+### Multi-Project Workflow
+
+Each directory gets its own persistent container:
+
+```bash
+# Project A
+cd ~/projects/frontend
+DCLAUDE_RM=false dclaude
+dclaude exec npm install
+
+# Project B (separate container)
+cd ~/projects/backend
+DCLAUDE_RM=false dclaude
+dclaude exec brew install go
+
+# Each maintains its own environment
 ```
 
 ## Troubleshooting
@@ -523,6 +690,30 @@ echo 'DCLAUDE_NETWORK=bridge' >> ~/.dclaude/config
 ```bash
 # Enable verbose output to diagnose issues
 DCLAUDE_DEBUG=true dclaude
+```
+
+### "No container found" when using exec
+```bash
+# The exec command requires a persistent container
+# Error: "No container found for this directory"
+
+# Solution: Create a persistent container first
+DCLAUDE_RM=false dclaude
+
+# Then exec will work
+dclaude exec
+```
+
+### Container not persisting installed packages
+```bash
+# Packages disappear after exit
+
+# Cause: Using ephemeral mode (default)
+dclaude  # Creates new container each time
+
+# Solution: Use persistent mode
+DCLAUDE_RM=false dclaude
+dclaude exec brew install your-package
 ```
 
 ## Development

@@ -28,7 +28,8 @@ fi
 # On some systems (like OrbStack), the Docker socket group doesn't match our docker group
 NEED_USER_SWITCH=false
 if [ -S "/var/run/docker.sock" ]; then
-    SOCKET_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null)
+    # Use -L to follow symlinks (important on macOS where socket is often symlinked)
+    SOCKET_GID=$(stat -L -c '%g' /var/run/docker.sock 2>/dev/null || stat -L -f '%g' /var/run/docker.sock 2>/dev/null)
     if [ -n "$SOCKET_GID" ] && [ "$SOCKET_GID" != "1002" ]; then
         # Socket is not in our docker group (1002), we need to adjust
         # Check if we're running as root (can modify groups)
