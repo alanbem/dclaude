@@ -35,8 +35,8 @@ if [ -S "/var/run/docker.sock" ]; then
             fi
 
             # Now switch to claude user and continue
-            # Use su-exec to properly switch user and execute command
-            exec su-exec claude "$@"
+            # Use gosu to properly switch user and execute command
+            exec gosu claude "$@"
         fi
     fi
 fi
