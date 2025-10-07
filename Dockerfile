@@ -31,12 +31,15 @@ RUN apk add --no-cache \
     python3-dev
 
 # Create non-root user for running Claude
-# Note: sudo removed for security - container should run with appropriate permissions
+# Note: Container starts as root for entrypoint setup, then switches to claude user
 RUN adduser -D -s /bin/bash claude \
     && addgroup -S docker 2>/dev/null || true \
     && addgroup claude docker
 
-# Switch to claude user
+# Set PATH for all tools
+ENV PATH="/home/claude/.npm-global/bin:/home/claude/.local/bin:${PATH}"
+
+# Switch to claude user temporarily for npm/package setup
 USER claude
 WORKDIR /home/claude
 
@@ -44,9 +47,6 @@ WORKDIR /home/claude
 RUN npm config set prefix /home/claude/.npm-global \
     && echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.bashrc \
     && echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.profile
-
-# Set PATH for all tools
-ENV PATH="/home/claude/.npm-global/bin:/home/claude/.local/bin:${PATH}"
 
 # Install Claude CLI with audit
 RUN npm install -g @anthropic-ai/claude-code
@@ -57,6 +57,9 @@ RUN mkdir -p /home/claude/workspace \
     /home/claude/.claude \
     /home/claude/.config \
     /home/claude/.cache
+
+# Switch back to root for entrypoint permission handling
+USER root
 
 # Declare .claude as a volume for persistent data
 # This ensures credentials and configs persist across container recreations

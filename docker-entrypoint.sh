@@ -1,6 +1,46 @@
 #!/bin/sh
 # Docker entrypoint for dclaude with config persistence
 
+# Handle SSH agent proxy setup for macOS (must run as root)
+if [ -n "$SSH_AUTH_SOCK" ] && [ -e "$SSH_AUTH_SOCK" ]; then
+    # Check if we need to create a proxy socket
+    # This is typically needed on macOS where the SSH_AUTH_SOCK has restrictive permissions
+    if [ ! -S "/tmp/ssh-proxy/agent" ] && [ -d "/tmp/ssh-proxy" ]; then
+        # We're running as root (from docker run), so create the proxy
+        # Start socat proxy in background to bridge SSH agent socket
+        socat UNIX-LISTEN:/tmp/ssh-proxy/agent,fork,user=claude,group=claude,mode=660 \
+              UNIX-CONNECT:$SSH_AUTH_SOCK &
+
+        # Give socat a moment to create the socket
+        sleep 0.2
+    fi
+fi
+
+# Fix Docker socket permissions if needed
+# On some systems (like OrbStack), the Docker socket group doesn't match our docker group
+if [ -S "/var/run/docker.sock" ]; then
+    SOCKET_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null)
+    if [ -n "$SOCKET_GID" ] && [ "$SOCKET_GID" != "101" ]; then
+        # Socket is not in our docker group (101), we need to adjust
+        # Check if we're running as root (can modify groups)
+        if [ "$(id -u)" = "0" ]; then
+            # If socket is in root group (0), add claude to root group
+            # Otherwise, change docker group GID to match socket
+            if [ "$SOCKET_GID" = "0" ]; then
+                adduser claude root 2>/dev/null || true
+            else
+                delgroup docker 2>/dev/null || true
+                addgroup -g "$SOCKET_GID" docker 2>/dev/null || true
+                addgroup claude docker 2>/dev/null || true
+            fi
+
+            # Now switch to claude user and continue
+            # Use su-exec to properly switch user and execute command
+            exec su-exec claude "$@"
+        fi
+    fi
+fi
+
 # Handle config persistence - restore .claude.json from volume if it exists
 if [ -f /home/claude/.claude/.claude.json ] && [ ! -f /home/claude/.claude.json ]; then
     cp /home/claude/.claude/.claude.json /home/claude/.claude.json
@@ -19,5 +59,5 @@ fi
     done
 ) &
 
-# Execute the command (already running as claude user)
+# Execute the command (running as claude user)
 exec "$@"
