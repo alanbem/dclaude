@@ -74,7 +74,10 @@ RUN curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.s
 USER root
 
 # Make Homebrew accessible to all users including claude
-RUN echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /etc/profile.d/brew.sh \
+# Add claude to linuxbrew group and set proper permissions
+RUN usermod -aG linuxbrew claude \
+    && chmod -R g+w /home/linuxbrew/.linuxbrew \
+    && echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /etc/profile.d/brew.sh \
     && chmod +x /etc/profile.d/brew.sh
 
 # Set PATH for all tools (including Homebrew)
