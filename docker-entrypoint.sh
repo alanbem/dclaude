@@ -16,12 +16,20 @@ if [ -n "$SSH_AUTH_SOCK" ] && [ -e "$SSH_AUTH_SOCK" ]; then
     fi
 fi
 
+# Fix permissions for mounted volumes as root before switching user
+if [ "$(id -u)" = "0" ]; then
+    # Fix .claude volume ownership to match claude user
+    if [ -d "/home/claude/.claude" ]; then
+        chown -R claude:claude /home/claude/.claude 2>/dev/null || true
+    fi
+fi
+
 # Fix Docker socket permissions if needed
 # On some systems (like OrbStack), the Docker socket group doesn't match our docker group
 if [ -S "/var/run/docker.sock" ]; then
     SOCKET_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null)
-    if [ -n "$SOCKET_GID" ] && [ "$SOCKET_GID" != "101" ]; then
-        # Socket is not in our docker group (101), we need to adjust
+    if [ -n "$SOCKET_GID" ] && [ "$SOCKET_GID" != "1002" ]; then
+        # Socket is not in our docker group (1002), we need to adjust
         # Check if we're running as root (can modify groups)
         if [ "$(id -u)" = "0" ]; then
             # If socket is in root group (0), add claude to root group
@@ -30,8 +38,8 @@ if [ -S "/var/run/docker.sock" ]; then
                 adduser claude root 2>/dev/null || true
             else
                 delgroup docker 2>/dev/null || true
-                addgroup -g "$SOCKET_GID" docker 2>/dev/null || true
-                addgroup claude docker 2>/dev/null || true
+                groupadd -g "$SOCKET_GID" docker 2>/dev/null || true
+                usermod -aG docker claude 2>/dev/null || true
             fi
 
             # Now switch to claude user and continue
