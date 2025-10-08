@@ -1,7 +1,7 @@
 # Dockerized Claude Code
-# Debian-based container with Claude CLI, Docker, Homebrew, and MCP support
+# Ubuntu-based container with Claude CLI, Docker, Homebrew, and MCP support
 
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -38,8 +38,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Docker CLI and Docker Compose
-RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" \
+RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
     | tee /etc/apt/sources.list.d/docker.list > /dev/null \
     && apt-get update \
     && apt-get install -y docker-ce-cli docker-compose-plugin \
@@ -55,8 +55,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | g
 
 # Create non-root user for running Claude
 # Note: Container starts as root for entrypoint setup, then switches to claude user
-RUN useradd -m -s /bin/bash -u 1000 claude \
-    && groupadd -f docker \
+RUN useradd -m -s /bin/bash claude \
+    && groupadd docker \
     && usermod -aG docker claude
 
 # Install Homebrew as linuxbrew user (Homebrew's recommended approach)
