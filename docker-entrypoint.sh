@@ -26,6 +26,7 @@ fi
 
 # Fix Docker socket permissions if needed
 # On some systems (like OrbStack), the Docker socket group doesn't match our docker group
+NEED_USER_SWITCH=false
 if [ -S "/var/run/docker.sock" ]; then
     SOCKET_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null)
     if [ -n "$SOCKET_GID" ] && [ "$SOCKET_GID" != "1002" ]; then
@@ -41,25 +42,34 @@ if [ -S "/var/run/docker.sock" ]; then
                 groupadd -g "$SOCKET_GID" docker 2>/dev/null || true
                 usermod -aG docker claude 2>/dev/null || true
             fi
-
-            # Now switch to claude user and continue
-            # Use gosu to properly switch user and execute command
-            exec gosu claude "$@"
+            NEED_USER_SWITCH=true
         fi
     fi
 fi
 
-# Handle config persistence - restore .claude.json from volume if it exists
+# Create wrapper script for config persistence as claude user
+cat > /tmp/entrypoint-wrapper.sh << 'WRAPPER_EOF'
+#!/bin/sh
+# This runs as claude user
+
+# Restore .claude.json from volume if it exists
 if [ -f /home/claude/.claude/.claude.json ] && [ ! -f /home/claude/.claude.json ]; then
     cp /home/claude/.claude/.claude.json /home/claude/.claude.json
 fi
+
+# Set up trap to sync config on exit
+cleanup() {
+    if [ -f /home/claude/.claude.json ]; then
+        cp /home/claude/.claude.json /home/claude/.claude/.claude.json 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT INT TERM
 
 # Start background process to periodically sync config to volume
 (
     while true; do
         sleep 5
         if [ -f /home/claude/.claude.json ]; then
-            # Only copy if file has changed (compare timestamps)
             if [ /home/claude/.claude.json -nt /home/claude/.claude/.claude.json ] || [ ! -f /home/claude/.claude/.claude.json ]; then
                 cp /home/claude/.claude.json /home/claude/.claude/.claude.json 2>/dev/null || true
             fi
@@ -67,5 +77,15 @@ fi
     done
 ) &
 
-# Execute the command (running as claude user)
+# Execute the actual command
 exec "$@"
+WRAPPER_EOF
+
+chmod +x /tmp/entrypoint-wrapper.sh
+
+# Switch to claude user if needed, otherwise just run wrapper
+if [ "$NEED_USER_SWITCH" = "true" ]; then
+    exec gosu claude /tmp/entrypoint-wrapper.sh "$@"
+else
+    exec /tmp/entrypoint-wrapper.sh "$@"
+fi
