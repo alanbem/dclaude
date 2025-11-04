@@ -800,6 +800,30 @@ main() {
     debug "TTY detection: stdin=$(test -t 0 && echo yes || echo no), stdout=$(test -t 1 && echo yes || echo no)"
     debug "TTY flags: ${tty_flags:-none}"
 
+    # Generate container name based on path (for reuse when DCLAUDE_RM=false)
+    local container_name=""
+    if [[ "$REMOVE_CONTAINER" == "false" ]]; then
+        # Create deterministic name from path hash
+        local path_hash=$(echo -n "$HOST_PATH" | md5sum 2>/dev/null | cut -d' ' -f1 || echo -n "$HOST_PATH" | md5 | cut -d' ' -f1)
+        container_name="dclaude-${path_hash:0:12}"
+        debug "Container name: $container_name (path: $HOST_PATH)"
+
+        # Check if container already exists
+        if docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+            local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+            debug "Found existing container: $container_name (status: $container_status)"
+
+            if [[ "$container_status" == "running" ]]; then
+                info "Attaching to running container: $container_name"
+                exec docker exec -it -u claude "$container_name" claude "$@"
+            elif [[ "$container_status" == "exited" ]]; then
+                info "Restarting existing container: $container_name"
+                docker start "$container_name" >/dev/null
+                exec docker exec -it -u claude "$container_name" claude "$@"
+            fi
+        fi
+    fi
+
     # Prepare Docker run arguments
     DOCKER_ARGS=(
         "run"
@@ -808,6 +832,9 @@ main() {
     # Add --rm flag if enabled (default: true)
     if [[ "$REMOVE_CONTAINER" == "true" ]]; then
         DOCKER_ARGS+=("--rm")
+    else
+        # Use named container for reuse
+        DOCKER_ARGS+=("--name" "$container_name")
     fi
 
     # Add TTY flags if available
