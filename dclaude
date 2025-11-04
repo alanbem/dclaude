@@ -24,6 +24,7 @@ readonly IMAGE_TAG="${DCLAUDE_TAG:-latest}"
 readonly IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 readonly VOLUME_PREFIX="dclaude"
 readonly DEBUG="${DCLAUDE_DEBUG:-false}"
+readonly REMOVE_CONTAINER="${DCLAUDE_RM:-true}"
 # Docker socket will be detected dynamically unless overridden
 DOCKER_SOCKET="${DCLAUDE_DOCKER_SOCKET:-}"
 readonly MOUNT_CONFIGS="${DCLAUDE_MOUNT_CONFIGS:-false}"
@@ -802,8 +803,12 @@ main() {
     # Prepare Docker run arguments
     DOCKER_ARGS=(
         "run"
-        "--rm"
     )
+
+    # Add --rm flag if enabled (default: true)
+    if [[ "$REMOVE_CONTAINER" == "true" ]]; then
+        DOCKER_ARGS+=("--rm")
+    fi
 
     # Add TTY flags if available
     if [[ -n "$tty_flags" ]]; then
@@ -855,6 +860,7 @@ main() {
     fi
 
     if [[ "$DEBUG" == "true" ]]; then
+        debug "Container removal: $REMOVE_CONTAINER (DCLAUDE_RM=${DCLAUDE_RM:-<not set>})"
         debug "Docker command: docker ${DOCKER_ARGS[*]} $IMAGE $*"
     fi
 
