@@ -900,6 +900,91 @@ cleanup() {
     debug "Cleaning up..."
 }
 
+# Subcommand: exec into container
+cmd_exec() {
+    local HOST_PATH
+    HOST_PATH=$(pwd -P)
+
+    # Generate container name from path hash (same logic as main)
+    local path_hash=$(echo -n "$HOST_PATH" | md5sum 2>/dev/null | cut -d' ' -f1 || echo -n "$HOST_PATH" | md5 | cut -d' ' -f1)
+    local container_name="dclaude-${path_hash:0:12}"
+
+    debug "Looking for container: $container_name (path: $HOST_PATH)"
+
+    # Check if container exists
+    if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        error "No container found for this directory"
+        info "Run 'DCLAUDE_RM=false dclaude' first to create a persistent container"
+        exit 1
+    fi
+
+    local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+    debug "Container status: $container_status"
+
+    if [[ "$container_status" != "running" ]]; then
+        error "Container $container_name is not running (status: $container_status)"
+        info "Start it with: DCLAUDE_RM=false dclaude"
+        exit 1
+    fi
+
+    # Exec into container as claude user
+    if [[ $# -eq 0 ]]; then
+        # No command specified, open bash shell
+        info "Opening shell in container: $container_name"
+        exec docker exec -it -u claude -w "$HOST_PATH" "$container_name" bash
+    else
+        # Execute specific command
+        info "Executing command in container: $container_name"
+        exec docker exec -it -u claude -w "$HOST_PATH" "$container_name" "$@"
+    fi
+}
+
+# Handle subcommands
+if [[ $# -gt 0 ]]; then
+    case "$1" in
+        exec|shell|bash)
+            shift
+            cmd_exec "$@"
+            ;;
+        --help|-h|help)
+            cat << 'EOF'
+dclaude - Dockerized Claude Code Launcher
+
+Usage:
+  dclaude [options]           Start Claude Code in Docker
+  dclaude exec [command]      Execute command in container (default: bash)
+  dclaude shell              Open bash shell in container
+  dclaude --help             Show this help
+
+Environment Variables:
+  DCLAUDE_TAG                Docker image tag (default: latest)
+  DCLAUDE_RM                 Remove container on exit (default: true)
+  DCLAUDE_DEBUG              Enable debug output (default: false)
+  DCLAUDE_MOUNT_CONFIGS      Mount host configs (default: false)
+  DCLAUDE_SSH                SSH mode: auto, agent-forwarding, key-mount, none
+  DCLAUDE_NETWORK            Network mode: auto, host, bridge
+  DCLAUDE_DOCKER_SOCKET      Override Docker socket path
+
+Examples:
+  # Start Claude Code (ephemeral)
+  dclaude
+
+  # Start with persistent container
+  DCLAUDE_RM=false dclaude
+
+  # Open bash shell in running container
+  dclaude exec
+
+  # Run command in container
+  dclaude exec npm install
+
+For more information: https://github.com/alanbem/dclaude
+EOF
+            exit 0
+            ;;
+    esac
+fi
+
 # Handle signals
 trap cleanup EXIT
 trap 'exit 130' INT
