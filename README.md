@@ -679,11 +679,9 @@ DCLAUDE_DEBUG=true dclaude
 
 **Force specific networking mode**:
 ```bash
-# Always use host networking
-echo 'DCLAUDE_NETWORK=host' >> ~/.dclaude/config
-
-# Always use bridge networking
-echo 'DCLAUDE_NETWORK=bridge' >> ~/.dclaude/config
+# Set in your shell profile (~/.bashrc, ~/.zshrc, etc.)
+export DCLAUDE_NETWORK=host    # Always use host networking
+export DCLAUDE_NETWORK=bridge  # Always use bridge networking
 ```
 
 ### Debug mode for troubleshooting
@@ -749,13 +747,6 @@ source completions/dclaude.bash
 
 # Zsh
 source completions/dclaude.zsh
-```
-
-### Configuration File
-Create `~/.dclaude/config` to set defaults:
-```bash
-cp examples/dclaude.config ~/.dclaude/config
-# Edit with your preferences
 ```
 
 ### Contributing
