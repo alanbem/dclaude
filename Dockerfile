@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y \
     gosu \
     procps \
     file \
+    tmux \
+    locales \
     # Build tools (required for Homebrew)
     build-essential \
     # Docker CLI installation dependencies
@@ -31,6 +33,10 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     # Node.js installation dependencies
     && rm -rf /var/lib/apt/lists/*
+
+# Configure UTF-8 locale
+RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
+    locale-gen en_US.UTF-8
 
 # Install Node.js 20.x (for Claude CLI and Node-based MCP servers)
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
@@ -114,8 +120,9 @@ USER root
 # Declare .claude as a volume for persistent data
 VOLUME ["/home/claude/.claude"]
 
-# Copy entrypoint script
+# Copy entrypoint script and tmux config
 COPY --chown=claude:claude docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --chown=claude:claude .tmux.conf /home/claude/.tmux.conf
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Set working directory to workspace
@@ -129,7 +136,10 @@ ENV CLAUDE_UNSAFE_TRUST_WORKSPACE=true \
     CLAUDE_EDIT_TIMEOUT=300000 \
     CLAUDE_WRITE_TIMEOUT=300000 \
     CLAUDE_WEBFETCH_TIMEOUT=300000 \
-    TERM=xterm-256color
+    TERM=xterm-256color \
+    LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8 \
+    LANGUAGE=en_US:en
 
 # Labels
 LABEL maintainer="alanbem" \

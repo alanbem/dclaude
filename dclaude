@@ -74,9 +74,31 @@ detect_platform() {
 
 # Detect Docker socket path based on platform
 detect_docker_socket() {
+    # Prefer Docker context (tells us the active socket)
+    if command -v docker &> /dev/null && command -v jq &> /dev/null; then
+        debug "Checking Docker context for socket path"
+        local context_output context_socket
+        context_output=$(docker context inspect 2>/dev/null || true)
+        if [[ -n "$context_output" ]]; then
+            context_socket=$(echo "$context_output" | jq -r '.[0].Endpoints.docker.Host' 2>/dev/null | sed 's|unix://||' 2>/dev/null) || true
+            if [[ -n "$context_socket" ]] && [[ -S "$context_socket" ]]; then
+                debug "Docker socket found via context: $context_socket"
+                echo "$context_socket"
+                return 0
+            else
+                debug "Context socket not valid: ${context_socket:-<empty>}"
+            fi
+        else
+            debug "No Docker context found"
+        fi
+    fi
+
+    # Fallback to common socket paths
+    debug "Falling back to filesystem search for Docker socket"
     local socket_paths=(
         "$HOME/.docker/run/docker.sock"      # macOS Docker Desktop
         "/var/run/docker.sock"                # Linux, Docker CE
+        "$HOME/.orbstack/run/docker.sock"    # OrbStack
         "$HOME/.colima/default/docker.sock"   # Colima
         "$HOME/.colima/docker.sock"           # Colima alternative
         "$HOME/.rd/docker.sock"               # Rancher Desktop
@@ -90,20 +112,6 @@ detect_docker_socket() {
             return 0
         fi
     done
-
-    # If no socket found, try to get from Docker context
-    if command -v docker &> /dev/null && command -v jq &> /dev/null; then
-        local context_output context_socket
-        context_output=$(docker context inspect 2>/dev/null || true)
-        if [[ -n "$context_output" ]]; then
-            context_socket=$(echo "$context_output" | jq -r '.[0].Endpoints.docker.Host' 2>/dev/null | sed 's|unix://||' 2>/dev/null) || true
-            if [[ -n "$context_socket" ]] && [[ -S "$context_socket" ]]; then
-                debug "Docker socket found via context: $context_socket"
-                echo "$context_socket"
-                return 0
-            fi
-        fi
-    fi
 
     debug "No Docker socket found"
     return 1
@@ -540,19 +548,23 @@ handle_ssh_auth() {
 
             # Platform-specific socket mounting
             local platform=$(detect_platform)
+            debug "Setting up SSH agent forwarding for platform: $platform"
             case "$platform" in
                 linux)
+                    debug "Using direct socket mount: ${SSH_AUTH_SOCK}"
                     docker_args+=(-v "${SSH_AUTH_SOCK}:/tmp/ssh-agent" -e "SSH_AUTH_SOCK=/tmp/ssh-agent")
                     info "SSH agent forwarding enabled (Linux)"
                     ;;
                 darwin)
                     # On macOS, we need to set up a proxy container first
+                    debug "Setting up SSH proxy container for macOS"
                     setup_ssh_proxy_container
 
                     # Now mount the proxied socket from the shared volume
                     docker_args+=(-v "dclaude-ssh-proxy:/tmp/ssh-proxy:ro"
                                  -e "SSH_AUTH_SOCK=/tmp/ssh-proxy/agent")
                     info "SSH agent forwarding enabled via proxy container"
+                    debug "Mounted SSH proxy volume: dclaude-ssh-proxy:/tmp/ssh-proxy"
                     ;;
                 windows)
                     warning "SSH agent forwarding not fully supported on Windows"
@@ -685,6 +697,30 @@ mount_host_configs() {
     fi
 }
 
+# Detect TTY availability and return appropriate Docker flags
+detect_tty_flags() {
+    local tty_flags=""
+
+    # Check if stdin is a TTY
+    if [[ -t 0 ]]; then
+        tty_flags="-i"
+    fi
+
+    # Check if stdout is a TTY
+    if [[ -t 1 ]]; then
+        tty_flags="${tty_flags} -t"
+    fi
+
+    # Trim whitespace
+    tty_flags=$(echo $tty_flags | xargs)
+
+    if [[ "$DEBUG" == "true" ]]; then
+        debug "TTY detection: stdin=$(test -t 0 && echo yes || echo no), stdout=$(test -t 1 && echo yes || echo no)"
+        debug "TTY flags: ${tty_flags:-none}"
+    fi
+
+    echo "$tty_flags"
+}
 
 # Main execution
 main() {
@@ -770,21 +806,7 @@ main() {
     fi
 
     # Detect TTY availability
-    local tty_flags=""
-    if [[ -t 0 ]]; then
-        # stdin is a TTY
-        tty_flags="-i"
-    fi
-    if [[ -t 1 ]]; then
-        # stdout is a TTY
-        tty_flags="${tty_flags} -t"
-    fi
-
-    # If we have TTY flags, trim whitespace
-    tty_flags=$(echo $tty_flags | xargs)
-
-    debug "TTY detection: stdin=$(test -t 0 && echo yes || echo no), stdout=$(test -t 1 && echo yes || echo no)"
-    debug "TTY flags: ${tty_flags:-none}"
+    local tty_flags=$(detect_tty_flags)
 
     # Generate container name based on path (for reuse when DCLAUDE_RM=false)
     local container_name=""
@@ -801,11 +823,48 @@ main() {
 
             if [[ "$container_status" == "running" ]]; then
                 info "Attaching to running container: $container_name"
-                exec docker exec -it -u claude "$container_name" claude "$@"
             elif [[ "$container_status" == "exited" ]]; then
                 info "Restarting existing container: $container_name"
                 docker start "$container_name" >/dev/null
-                exec docker exec -it -u claude "$container_name" claude "$@"
+
+                # Wait for container to be running
+                local wait_count=0
+                while [[ $wait_count -lt 30 ]]; do
+                    if docker ps -q -f name="^${container_name}$" 2>/dev/null | grep -q .; then
+                        debug "Container restarted successfully"
+                        break
+                    fi
+                    sleep 0.1
+                    ((wait_count++))
+                done
+            fi
+
+            # For interactive sessions, use tmux
+            if [[ $# -eq 0 ]] || [[ "$1" == "--continue" ]]; then
+                local tmux_session="claude-session"
+                debug "Checking for existing tmux session: $tmux_session"
+
+                # Build env args for docker exec to pass terminal info to tmux session
+                local exec_env_args=()
+                [[ -n "${TERM_PROGRAM:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM=${TERM_PROGRAM}")
+                [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
+                [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
+                [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
+
+                # Check if tmux session exists
+                if docker exec -u claude "$container_name" tmux has-session -t "$tmux_session" 2>/dev/null; then
+                    debug "Attaching to existing tmux session"
+                    info "Resuming Claude session..."
+                    exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf attach-session -t "$tmux_session"
+                else
+                    debug "Creating new tmux session running Claude"
+                    info "Starting new Claude session..."
+                    exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "$@"
+                fi
+            else
+                # For non-interactive commands, run directly
+                debug "Running command directly (non-interactive)"
+                exec docker exec -u claude "$container_name" claude "$@"
             fi
         fi
     fi
@@ -837,9 +896,23 @@ main() {
         -w "${HOST_PATH}"
         # Network mode
         --network="$network_mode"
-        # Environment
+        # Environment - pass through terminal identification for proper feature detection
         -e "TERM=${TERM:-xterm-256color}"
     )
+
+    # Pass through terminal program information for proper logo rendering
+    if [[ -n "${TERM_PROGRAM:-}" ]]; then
+        DOCKER_ARGS+=(-e "TERM_PROGRAM=${TERM_PROGRAM}")
+    fi
+    if [[ -n "${TERM_PROGRAM_VERSION:-}" ]]; then
+        DOCKER_ARGS+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
+    fi
+    if [[ -n "${TERM_SESSION_ID:-}" ]]; then
+        DOCKER_ARGS+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
+    fi
+    if [[ -n "${COLORTERM:-}" ]]; then
+        DOCKER_ARGS+=(-e "COLORTERM=${COLORTERM}")
+    fi
 
     # Detect and mount Docker socket if it exists
     if [[ -z "$DOCKER_SOCKET" ]]; then
@@ -878,7 +951,58 @@ main() {
     fi
 
     # Run Claude in Docker
-    exec docker "${DOCKER_ARGS[@]}" "$IMAGE" "$@"
+    if [[ "$REMOVE_CONTAINER" == "false" ]]; then
+        # For persistent containers, run a daemon process
+        # We'll exec into it later to run Claude with the entrypoint wrapper
+        debug "Starting persistent container with tail daemon"
+        docker "${DOCKER_ARGS[@]}" --entrypoint tail "$IMAGE" -f /dev/null >/dev/null 2>&1 &
+
+        # Wait for container to start
+        local wait_count=0
+        while [[ $wait_count -lt 30 ]]; do
+            if docker ps -q -f name="^${container_name}$" 2>/dev/null | grep -q .; then
+                debug "Container started successfully"
+                break
+            fi
+            sleep 0.1
+            ((wait_count++))
+        done
+
+        # Run entrypoint setup as root (for Docker socket permissions, etc.)
+        debug "Running entrypoint initialization"
+        docker exec -u root "$container_name" /usr/local/bin/docker-entrypoint.sh true >/dev/null 2>&1 || true
+
+        # For interactive sessions (no args or --continue), use tmux
+        if [[ $# -eq 0 ]] || [[ "$1" == "--continue" ]]; then
+            local tmux_session="claude-session"
+            debug "Checking for existing tmux session: $tmux_session"
+
+            # Build env args for docker exec to pass terminal info to tmux session
+            local exec_env_args=()
+            [[ -n "${TERM_PROGRAM:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM=${TERM_PROGRAM}")
+            [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
+            [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
+            [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
+
+            # Check if tmux session exists
+            if docker exec -u claude "$container_name" tmux has-session -t "$tmux_session" 2>/dev/null; then
+                debug "Attaching to existing tmux session"
+                info "Resuming Claude session..."
+                exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf attach-session -t "$tmux_session"
+            else
+                debug "Creating new tmux session running Claude"
+                info "Starting new Claude session..."
+                exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "$@"
+            fi
+        else
+            # For non-interactive commands, run directly
+            debug "Running command directly (non-interactive)"
+            exec docker exec -u claude "$container_name" claude "$@"
+        fi
+    else
+        # Ephemeral container - run directly
+        exec docker "${DOCKER_ARGS[@]}" "$IMAGE" "$@"
+    fi
 }
 
 # Cleanup function
@@ -908,20 +1032,31 @@ cmd_exec() {
     debug "Container status: $container_status"
 
     if [[ "$container_status" != "running" ]]; then
-        error "Container $container_name is not running (status: $container_status)"
-        info "Start it with: DCLAUDE_RM=false dclaude"
-        exit 1
+        if [[ "$container_status" == "exited" ]]; then
+            info "Restarting existing container: $container_name"
+            docker start "$container_name" >/dev/null
+            debug "Container restarted successfully"
+        else
+            error "Container $container_name is in unexpected state: $container_status"
+            info "Remove it with: docker rm $container_name"
+            exit 1
+        fi
     fi
+
+    # Detect TTY availability
+    local tty_flags=$(detect_tty_flags)
 
     # Exec into container as claude user
     if [[ $# -eq 0 ]]; then
         # No command specified, open bash shell
         info "Opening shell in container: $container_name"
-        exec docker exec -it -u claude -w "$HOST_PATH" "$container_name" bash
+        debug "Exec command: docker exec $tty_flags -u claude -w $HOST_PATH $container_name bash"
+        exec docker exec $tty_flags -u claude -w "$HOST_PATH" "$container_name" bash
     else
         # Execute specific command
         info "Executing command in container: $container_name"
-        exec docker exec -it -u claude -w "$HOST_PATH" "$container_name" "$@"
+        debug "Exec command: docker exec $tty_flags -u claude -w $HOST_PATH $container_name $*"
+        exec docker exec $tty_flags -u claude -w "$HOST_PATH" "$container_name" "$@"
     fi
 }
 
