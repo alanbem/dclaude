@@ -946,10 +946,10 @@ main() {
 
     # Run Claude in Docker
     if [[ "$REMOVE_CONTAINER" == "false" ]]; then
-        # For persistent containers, run a daemon process
-        # We'll exec into it later to run Claude with the entrypoint wrapper
-        debug "Starting persistent container with tail daemon"
-        docker "${DOCKER_ARGS[@]}" --entrypoint tail "$IMAGE" -f /dev/null >/dev/null 2>&1 &
+        # For persistent containers, run tini with tail daemon for zombie reaping
+        # tini will reap zombie processes created by exec commands
+        debug "Starting persistent container with tini + tail daemon"
+        docker "${DOCKER_ARGS[@]}" --entrypoint /usr/bin/tini "$IMAGE" -- tail -f /dev/null >/dev/null 2>&1 &
 
         # Wait for container to start
         local wait_count=0

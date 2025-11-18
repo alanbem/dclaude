@@ -20,11 +20,36 @@ AI assistant guidance for working with the dclaude (Dockerized Claude Code) proj
 ## Critical Technical Context
 
 ### Architecture Components
-- **Dockerfile**: Alpine 3.19 base, non-root `claude` user, includes Docker CLI/Compose, GitHub CLI, Node.js, Python, socat, su-exec
+- **Dockerfile**: Ubuntu 24.04 base, non-root `claude` user, includes Docker CLI/Compose, GitHub CLI, Node.js, Python, socat, gosu, tini, tmux
+- **tini**: Minimal init system (PID 1) that reaps zombie processes created by docker exec commands
 - **docker-entrypoint.sh**: Entrypoint script that sets up SSH agent proxy when needed (socat bridge for macOS permissions)
 - **dclaude script**: Launcher handling platform detection, volume management, path mirroring, config mounting
 - **Docker volumes**: `dclaude-config`, `dclaude-cache`, `dclaude-claude` for persistent data
 - **Config mounting**: Optional read-only mounting of host configs (SSH, Docker, Git, GitHub CLI, NPM)
+
+### Process Management with Tini
+
+**Why tini is critical:**
+
+Persistent containers run `tini` as PID 1, which serves as a minimal init system that properly reaps zombie (defunct) processes.
+
+**The Problem Without Tini:**
+- When using `docker exec` to start tmux sessions, child processes (tmux, claude, sh, git) are created
+- When these processes exit, they become zombies if their parent doesn't call `wait()` to reap them
+- `tail -f /dev/null` (our daemon process) doesn't reap zombies, causing accumulation
+- Zombie processes waste PIDs and can eventually exhaust system resources
+
+**How Tini Solves This:**
+- Tini runs as PID 1 and properly handles SIGCHLD signals
+- Automatically reaps any zombie child processes
+- Forwards signals to child processes correctly
+- Minimal overhead (~10KB binary)
+
+**Implementation:**
+- Dockerfile: Installs `tini` package
+- Dockerfile ENTRYPOINT: Wraps entrypoint with tini for ephemeral containers
+- dclaude script: Uses `--entrypoint /usr/bin/tini` for persistent containers
+- Result: Clean process tree with no zombie accumulation
 
 ### Host Integration Features
 1. **Docker socket mounting** (`/var/run/docker.sock`) - enables container management from within

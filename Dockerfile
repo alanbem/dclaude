@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y \
     file \
     tmux \
     locales \
+    tini \
     # Build tools (required for Homebrew)
     build-essential \
     # Docker CLI installation dependencies
@@ -154,5 +155,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD claude --version || exit 1
 
 # Use entrypoint script for config persistence
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh", "claude"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh", "claude"]
 CMD []
