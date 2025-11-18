@@ -106,6 +106,45 @@ The `mount_host_configs()` function provides selective config mounting controlle
 - All mounts use read-only flag (`:ro`)
 - SSH handled separately via `handle_ssh_auth()` function
 
+## Tmux Session Management
+
+### Architecture
+Persistent containers (`DCLAUDE_RM=false`, now the default) use tmux for session management. Each `dclaude` invocation creates a **new** tmux session with a unique name.
+
+### Session Naming
+- **Default**: Auto-generated timestamp-based name (e.g., `claude-20231118-143022`)
+- **Custom**: Set via `DCLAUDE_TMUX_SESSION` environment variable (e.g., `claude-architect`)
+- **Multiple sessions**: Multiple Claude instances can run concurrently in the same container
+
+### Critical Tmux Configuration (.tmux.conf)
+
+**IMPORTANT BUG FIX**: The following settings are critical for proper multi-session behavior:
+
+```tmux
+# When the last pane exits, detach instead of switching sessions
+set-option -g detach-on-destroy on
+```
+
+**Why this matters:**
+- **Problem**: With `detach-on-destroy off`, tmux will switch to another active session when one exits, creating confusing UX where exiting one Claude jumps you into another Claude session
+- **Solution**: With `detach-on-destroy on`, tmux cleanly exits to your terminal when a session ends
+- **Behavior**: Each session is independent; exiting one session returns you to your terminal, not to another Claude
+
+**Additional performance settings:**
+- `escape-time 0` - Eliminates keyboard input delays
+- `aggressive-resize off` - Prevents input lag in multiple sessions
+- Simple `new-session` command without detach/attach pattern prevents double tmux processes that cause lag
+
+### Session Lifecycle
+1. `dclaude` starts → Creates new tmux session → Runs Claude
+2. Claude exits → Tmux session ends automatically
+3. All sessions exit → Tmux server shuts down
+4. Container keeps running → Ready for next `dclaude` invocation
+
+### Known Issues (Fixed)
+- ❌ **Session switching bug**: Using `detach-on-destroy off` caused sessions to switch instead of exit (FIXED: use `on`)
+- ❌ **Input lag in second session**: Creating detached session then attaching caused double tmux processes (FIXED: use direct `new-session`)
+
 ## Security Constraints
 - No sudo in container (removed for security)
 - Docker socket access is privileged - document risks

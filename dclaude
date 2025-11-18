@@ -10,7 +10,7 @@ readonly IMAGE_TAG="${DCLAUDE_TAG:-latest}"
 readonly IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 readonly VOLUME_PREFIX="dclaude"
 readonly DEBUG="${DCLAUDE_DEBUG:-false}"
-readonly REMOVE_CONTAINER="${DCLAUDE_RM:-true}"
+readonly REMOVE_CONTAINER="${DCLAUDE_RM:-false}"
 # Docker socket will be detected dynamically unless overridden
 DOCKER_SOCKET="${DCLAUDE_DOCKER_SOCKET:-}"
 readonly MOUNT_CONFIGS="${DCLAUDE_MOUNT_CONFIGS:-false}"
@@ -839,33 +839,30 @@ main() {
                 done
             fi
 
-            # For interactive sessions, use tmux
-            if [[ $# -eq 0 ]] || [[ "$1" == "--continue" ]]; then
-                local tmux_session="claude-session"
-                debug "Checking for existing tmux session: $tmux_session"
-
-                # Build env args for docker exec to pass terminal info to tmux session
-                local exec_env_args=()
-                [[ -n "${TERM_PROGRAM:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM=${TERM_PROGRAM}")
-                [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
-                [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
-                [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
-
-                # Check if tmux session exists
-                if docker exec -u claude "$container_name" tmux has-session -t "$tmux_session" 2>/dev/null; then
-                    debug "Attaching to existing tmux session"
-                    info "Resuming Claude session..."
-                    exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf attach-session -t "$tmux_session"
-                else
-                    debug "Creating new tmux session running Claude"
-                    info "Starting new Claude session..."
-                    exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "$@"
-                fi
+            # Always use tmux for persistent containers (provides session management)
+            # Generate tmux session name
+            local tmux_session
+            if [[ -n "${DCLAUDE_TMUX_SESSION:-}" ]]; then
+                # Use custom session name if provided
+                tmux_session="$DCLAUDE_TMUX_SESSION"
+                debug "Using custom tmux session name: $tmux_session"
             else
-                # For non-interactive commands, run directly
-                debug "Running command directly (non-interactive)"
-                exec docker exec -u claude "$container_name" claude "$@"
+                # Generate unique session name with timestamp
+                tmux_session="claude-$(date +%Y%m%d-%H%M%S)"
+                debug "Generated unique tmux session name: $tmux_session"
             fi
+
+            # Build env args for docker exec to pass terminal info to tmux session
+            local exec_env_args=()
+            [[ -n "${TERM_PROGRAM:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM=${TERM_PROGRAM}")
+            [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
+            [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
+            [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
+
+            # Always create a new tmux session (never reattach)
+            debug "Creating new tmux session running Claude"
+            info "Starting new Claude session..."
+            exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "$@"
         fi
     fi
 
@@ -972,33 +969,30 @@ main() {
         debug "Running entrypoint initialization"
         docker exec -u root "$container_name" /usr/local/bin/docker-entrypoint.sh true >/dev/null 2>&1 || true
 
-        # For interactive sessions (no args or --continue), use tmux
-        if [[ $# -eq 0 ]] || [[ "$1" == "--continue" ]]; then
-            local tmux_session="claude-session"
-            debug "Checking for existing tmux session: $tmux_session"
-
-            # Build env args for docker exec to pass terminal info to tmux session
-            local exec_env_args=()
-            [[ -n "${TERM_PROGRAM:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM=${TERM_PROGRAM}")
-            [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
-            [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
-            [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
-
-            # Check if tmux session exists
-            if docker exec -u claude "$container_name" tmux has-session -t "$tmux_session" 2>/dev/null; then
-                debug "Attaching to existing tmux session"
-                info "Resuming Claude session..."
-                exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf attach-session -t "$tmux_session"
-            else
-                debug "Creating new tmux session running Claude"
-                info "Starting new Claude session..."
-                exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "$@"
-            fi
+        # Always use tmux for persistent containers (provides session management)
+        # Generate tmux session name
+        local tmux_session
+        if [[ -n "${DCLAUDE_TMUX_SESSION:-}" ]]; then
+            # Use custom session name if provided
+            tmux_session="$DCLAUDE_TMUX_SESSION"
+            debug "Using custom tmux session name: $tmux_session"
         else
-            # For non-interactive commands, run directly
-            debug "Running command directly (non-interactive)"
-            exec docker exec -u claude "$container_name" claude "$@"
+            # Generate unique session name with timestamp
+            tmux_session="claude-$(date +%Y%m%d-%H%M%S)"
+            debug "Generated unique tmux session name: $tmux_session"
         fi
+
+        # Build env args for docker exec to pass terminal info to tmux session
+        local exec_env_args=()
+        [[ -n "${TERM_PROGRAM:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM=${TERM_PROGRAM}")
+        [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
+        [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
+        [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
+
+        # Always create a new tmux session (never reattach)
+        debug "Creating new tmux session running Claude"
+        info "Starting new Claude session..."
+        exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "$@"
     else
         # Ephemeral container - run directly
         exec docker "${DOCKER_ARGS[@]}" "$IMAGE" "$@"
@@ -1079,19 +1073,23 @@ Usage:
 
 Environment Variables:
   DCLAUDE_TAG                Docker image tag (default: latest)
-  DCLAUDE_RM                 Remove container on exit (default: true)
+  DCLAUDE_RM                 Remove container on exit (default: false)
   DCLAUDE_DEBUG              Enable debug output (default: false)
   DCLAUDE_MOUNT_CONFIGS      Mount host configs (default: false)
   DCLAUDE_SSH                SSH mode: auto, agent-forwarding, key-mount, none
   DCLAUDE_NETWORK            Network mode: auto, host, bridge
   DCLAUDE_DOCKER_SOCKET      Override Docker socket path
+  DCLAUDE_TMUX_SESSION       Custom tmux session name (default: claude-TIMESTAMP)
 
 Examples:
-  # Start Claude Code (ephemeral)
+  # Start Claude Code (persistent container, default)
   dclaude
 
-  # Start with persistent container
-  DCLAUDE_RM=false dclaude
+  # Start with ephemeral container (removed on exit)
+  DCLAUDE_RM=true dclaude
+
+  # Start with custom session name (e.g., for role-based workflows)
+  DCLAUDE_TMUX_SESSION=claude-architect dclaude
 
   # Open bash shell in running container
   dclaude exec
