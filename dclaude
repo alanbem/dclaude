@@ -735,9 +735,6 @@ main() {
     create_volumes
     update_image
 
-    # Get current directory for mounting
-    HOST_PATH=$(get_host_path)
-
     # Platform-specific settings
     local platform
     platform=$(detect_platform)
@@ -1006,9 +1003,6 @@ cleanup() {
 
 # Subcommand: exec into container
 cmd_exec() {
-    local HOST_PATH
-    HOST_PATH=$(pwd -P)
-
     # Generate container name from path hash (same logic as main)
     local path_hash=$(echo -n "$HOST_PATH" | md5sum 2>/dev/null | cut -d' ' -f1 || echo -n "$HOST_PATH" | md5 | cut -d' ' -f1)
     local container_name="dclaude-${path_hash:0:12}"
@@ -1054,9 +1048,75 @@ cmd_exec() {
     fi
 }
 
+# Subcommand: attach to existing tmux session
+cmd_attach() {
+    local session_name="${1:-${DCLAUDE_TMUX_SESSION:-}}"
+
+    if [[ -z "$session_name" ]]; then
+        error "No session name provided"
+        info "Usage: dclaude attach <session-name>"
+        info "   or: DCLAUDE_TMUX_SESSION=<name> dclaude attach"
+        exit 1
+    fi
+
+    # Generate container name based on current directory
+    local path_hash=$(echo -n "$HOST_PATH" | md5sum 2>/dev/null | cut -d' ' -f1 || echo -n "$HOST_PATH" | md5 | cut -d' ' -f1)
+    local container_name="dclaude-${path_hash:0:12}"
+
+    # Check if container exists
+    if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        error "No container found for this directory"
+        info "Run 'dclaude' first to create a container"
+        exit 1
+    fi
+
+    # Check if container is running
+    local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+    if [[ "$container_status" != "running" ]]; then
+        if [[ "$container_status" == "exited" ]]; then
+            info "Restarting container: $container_name"
+            docker start "$container_name" >/dev/null
+        else
+            error "Container $container_name is in unexpected state: $container_status"
+            exit 1
+        fi
+    fi
+
+    # Check if session exists
+    if ! docker exec -u claude "$container_name" tmux has-session -t "$session_name" 2>/dev/null; then
+        error "Session '$session_name' not found in container"
+        info "Available sessions:"
+        docker exec -u claude "$container_name" tmux list-sessions 2>/dev/null || echo "  (no sessions running)"
+        exit 1
+    fi
+
+    # Build env args for docker exec
+    local exec_env_args=()
+    [[ -n "${TERM_PROGRAM:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM=${TERM_PROGRAM}")
+    [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
+    [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
+    [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
+
+    # Attach to existing session
+    info "Attaching to session: $session_name"
+    exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf attach-session -t "$session_name"
+}
+
+# Initialize HOST_PATH once for all commands
+HOST_PATH=$(get_host_path)
+
 # Handle subcommands
 if [[ $# -gt 0 ]]; then
     case "$1" in
+        new)
+            # Explicit "new" command - shift and pass remaining args to main
+            shift
+            # Fall through to main function
+            ;;
+        attach)
+            shift
+            cmd_attach "$@"
+            ;;
         exec|shell|bash)
             shift
             cmd_exec "$@"
@@ -1066,7 +1126,9 @@ if [[ $# -gt 0 ]]; then
 dclaude - Dockerized Claude Code Launcher
 
 Usage:
-  dclaude [options]           Start Claude Code in Docker
+  dclaude [options]           Start new Claude session (default)
+  dclaude new [options]       Start new Claude session (explicit)
+  dclaude attach <session>    Attach to existing tmux session
   dclaude exec [command]      Execute command in container (default: bash)
   dclaude shell              Open bash shell in container
   dclaude --help             Show this help
@@ -1082,14 +1144,20 @@ Environment Variables:
   DCLAUDE_TMUX_SESSION       Custom tmux session name (default: claude-TIMESTAMP)
 
 Examples:
-  # Start Claude Code (persistent container, default)
+  # Start new Claude session (auto-generated session name)
   dclaude
+  dclaude new
+
+  # Start with custom session name (role-based workflows)
+  DCLAUDE_TMUX_SESSION=claude-architect dclaude
+  dclaude new --dangerously-skip-permissions
+
+  # Attach to existing named session
+  dclaude attach claude-architect
+  DCLAUDE_TMUX_SESSION=claude-architect dclaude attach
 
   # Start with ephemeral container (removed on exit)
   DCLAUDE_RM=true dclaude
-
-  # Start with custom session name (e.g., for role-based workflows)
-  DCLAUDE_TMUX_SESSION=claude-architect dclaude
 
   # Open bash shell in running container
   dclaude exec
