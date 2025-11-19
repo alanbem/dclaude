@@ -999,10 +999,7 @@ main() {
     fi
 }
 
-# Cleanup function
-cleanup() {
-    debug "Cleaning up..."
-}
+
 
 # Subcommand: exec into container
 cmd_exec() {
@@ -1176,7 +1173,7 @@ EOF
 fi
 
 # Handle signals
-trap cleanup EXIT
+
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
