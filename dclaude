@@ -955,18 +955,15 @@ main() {
         # For persistent containers, run tini with tail daemon for zombie reaping
         # tini will reap zombie processes created by exec commands
         debug "Starting persistent container with tini + tail daemon"
-        docker "${DOCKER_ARGS[@]}" --entrypoint /usr/bin/tini "$IMAGE" -- tail -f /dev/null >/dev/null 2>&1 &
-
-        # Wait for container to start
-        local wait_count=0
-        while [[ $wait_count -lt 30 ]]; do
-            if docker ps -q -f name="^${container_name}$" 2>/dev/null | grep -q .; then
-                debug "Container started successfully"
-                break
-            fi
-            sleep 0.1
-            ((wait_count++))
-        done
+        
+        # Run in detached mode (-d) and capture output (Container ID) or errors
+        local run_output
+        if ! run_output=$(docker "${DOCKER_ARGS[@]}" -d --entrypoint /usr/bin/tini "$IMAGE" -- tail -f /dev/null 2>&1); then
+            error "Failed to start container: $run_output"
+            exit 1
+        fi
+        
+        debug "Container started successfully: $run_output"
 
         # Run entrypoint setup as root (for Docker socket permissions, etc.)
         debug "Running entrypoint initialization"
