@@ -30,8 +30,12 @@ NEED_USER_SWITCH=false
 if [ -S "/var/run/docker.sock" ]; then
     # Use -L to follow symlinks (important on macOS where socket is often symlinked)
     SOCKET_GID=$(stat -L -c '%g' /var/run/docker.sock 2>/dev/null || stat -L -f '%g' /var/run/docker.sock 2>/dev/null)
-    if [ -n "$SOCKET_GID" ] && [ "$SOCKET_GID" != "1002" ]; then
-        # Socket is not in our docker group (1002), we need to adjust
+    
+    # Get the GID of our docker group (dynamically, not hardcoded)
+    DOCKER_GROUP_GID=$(getent group docker | cut -d: -f3)
+    
+    if [ -n "$SOCKET_GID" ] && [ -n "$DOCKER_GROUP_GID" ] && [ "$SOCKET_GID" != "$DOCKER_GROUP_GID" ]; then
+        # Socket is not in our docker group, we need to adjust
         # Check if we're running as root (can modify groups)
         if [ "$(id -u)" = "0" ]; then
             # If socket is in root group (0), add claude to root group
