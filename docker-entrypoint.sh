@@ -76,7 +76,7 @@ trap cleanup EXIT INT TERM
             fi
         fi
     done
-) &
+) >/dev/null 2>&1 &
 
 # Execute the actual command
 exec "$@"

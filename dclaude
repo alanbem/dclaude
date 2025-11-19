@@ -876,10 +876,9 @@ main() {
         DOCKER_ARGS+=("--name" "$container_name")
     fi
 
-    # Add TTY flags if available
-    if [[ -n "$tty_flags" ]]; then
-        DOCKER_ARGS+=($tty_flags)
-    fi
+    # TTY flags will be added only when needed (ephemeral containers)
+    # Persistent containers run in background and shouldn't have TTY/stdin attached
+
 
     DOCKER_ARGS+=(
         # Mount current directory
@@ -992,6 +991,10 @@ main() {
         exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "$@"
     else
         # Ephemeral container - run directly
+        # Add TTY flags here as we are running interactively
+        if [[ -n "$tty_flags" ]]; then
+            DOCKER_ARGS+=($tty_flags)
+        fi
         exec docker "${DOCKER_ARGS[@]}" "$IMAGE" "$@"
     fi
 }
