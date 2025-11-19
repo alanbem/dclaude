@@ -458,6 +458,14 @@ get_host_path() {
     echo "$host_path"
 }
 
+# Generate deterministic container name from path
+get_container_name() {
+    local path="${1:-$HOST_PATH}"
+    local path_hash
+    path_hash=$(echo -n "$path" | md5sum 2>/dev/null | cut -d' ' -f1 || echo -n "$path" | md5 | cut -d' ' -f1)
+    echo "dclaude-${path_hash:0:12}"
+}
+
 # Handle SSH authentication based on DCLAUDE_SSH mode
 # Setup SSH proxy container for macOS
 setup_ssh_proxy_container() {
@@ -809,8 +817,7 @@ main() {
     local container_name=""
     if [[ "$REMOVE_CONTAINER" == "false" ]]; then
         # Create deterministic name from path hash
-        local path_hash=$(echo -n "$HOST_PATH" | md5sum 2>/dev/null | cut -d' ' -f1 || echo -n "$HOST_PATH" | md5 | cut -d' ' -f1)
-        container_name="dclaude-${path_hash:0:12}"
+        container_name=$(get_container_name "$HOST_PATH")
         debug "Container name: $container_name (path: $HOST_PATH)"
 
         # Check if container already exists
@@ -1004,8 +1011,8 @@ main() {
 # Subcommand: exec into container
 cmd_exec() {
     # Generate container name from path hash (same logic as main)
-    local path_hash=$(echo -n "$HOST_PATH" | md5sum 2>/dev/null | cut -d' ' -f1 || echo -n "$HOST_PATH" | md5 | cut -d' ' -f1)
-    local container_name="dclaude-${path_hash:0:12}"
+    local container_name=$(get_container_name "$HOST_PATH")
+
 
     debug "Looking for container: $container_name (path: $HOST_PATH)"
 
@@ -1060,8 +1067,8 @@ cmd_attach() {
     fi
 
     # Generate container name based on current directory
-    local path_hash=$(echo -n "$HOST_PATH" | md5sum 2>/dev/null | cut -d' ' -f1 || echo -n "$HOST_PATH" | md5 | cut -d' ' -f1)
-    local container_name="dclaude-${path_hash:0:12}"
+    local container_name=$(get_container_name "$HOST_PATH")
+
 
     # Check if container exists
     if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
