@@ -51,6 +51,48 @@ Persistent containers run `tini` as PID 1, which serves as a minimal init system
 - dclaude script: Uses `--entrypoint /usr/bin/tini` for persistent containers
 - Result: Clean process tree with no zombie accumulation
 
+### Configuration Persistence with inotifywait
+
+**Why event-based sync is critical:**
+
+Claude Code stores its configuration in `~/.claude.json`. Since this directory is mounted as a volume for persistence, we need to sync changes between the container's home directory and the volume.
+
+**The Problem With Polling:**
+- Traditional approach: Check file every N seconds (e.g., every 5s)
+- Wastes CPU cycles even when nothing changes
+- Creates sync delay (up to N seconds before changes persist)
+- Unnecessary I/O operations
+
+**How inotifywait Solves This:**
+- Event-based monitoring using Linux kernel inotify API
+- Zero CPU usage while idle - kernel wakes process only on file changes
+- Instant sync when file is modified (no polling delay)
+- Handles atomic writes correctly (watches for `close_write` and `moved_to` events)
+
+**Implementation:**
+- Dockerfile: Installs `inotify-tools` package
+- docker-entrypoint.sh: Background process watches `/home/claude/.claude.json` for changes
+- On file modification: Immediately copies to volume at `/home/claude/.claude/.claude.json`
+- Handles editor atomic writes (write to temp file, then move to final location)
+
+**Technical Details:**
+```bash
+# Watch directory (not file directly) to catch atomic writes
+inotifywait -e close_write -e moved_to --include '\.claude\.json$' /home/claude
+```
+
+**Why watch the directory:**
+- Many editors (vim, nano, etc.) don't modify files in-place
+- They write to a temp file and then move it to the final location
+- Watching the directory catches these `moved_to` events
+- Pattern filter ensures we only react to `.claude.json` changes
+
+**Result:**
+- Efficient, responsive config persistence
+- No polling overhead
+- Instant sync on changes
+- Works with all text editors
+
 ### Host Integration Features
 1. **Docker socket mounting** (`/var/run/docker.sock`) - enables container management from within
 2. **Path mirroring** - current directory mounted at same absolute path in container
