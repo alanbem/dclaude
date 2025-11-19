@@ -68,13 +68,15 @@ trap cleanup EXIT INT TERM
 
 # Start background process to periodically sync config to volume
 (
-    while true; do
-        sleep 5
-        if [ -f /home/claude/.claude.json ]; then
-            if [ /home/claude/.claude.json -nt /home/claude/.claude/.claude.json ] || [ ! -f /home/claude/.claude/.claude.json ]; then
-                cp /home/claude/.claude.json /home/claude/.claude/.claude.json 2>/dev/null || true
-            fi
-        fi
+    # Initial sync
+    if [ -f /home/claude/.claude.json ]; then
+        cp /home/claude/.claude.json /home/claude/.claude/.claude.json 2>/dev/null || true
+    fi
+
+    # Watch for changes using inotifywait (efficient event-based sync)
+    # We watch the directory because editors/tools often write to temp file and move it
+    while inotifywait -e close_write -e moved_to --include '\.claude\.json$' /home/claude 2>/dev/null; do
+        cp /home/claude/.claude.json /home/claude/.claude/.claude.json 2>/dev/null || true
     done
 ) >/dev/null 2>&1 &
 

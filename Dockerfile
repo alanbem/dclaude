@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y \
     tmux \
     locales \
     tini \
+    inotify-tools \
     # Build tools (required for Homebrew)
     build-essential \
     # Docker CLI installation dependencies
