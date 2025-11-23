@@ -16,6 +16,12 @@ DOCKER_SOCKET="${DCLAUDE_DOCKER_SOCKET:-}"
 readonly MOUNT_CONFIGS="${DCLAUDE_MOUNT_CONFIGS:-false}"
 readonly SSH_MODE="${DCLAUDE_SSH:-auto}"  # auto, agent-forwarding, key-mount, none
 
+# Chrome configuration (not readonly to allow --port flag override)
+CHROME_PROFILE="${DCLAUDE_CHROME_PROFILE:-claude}"
+CHROME_PORT="${DCLAUDE_CHROME_PORT:-9222}"
+CHROME_BIN="${DCLAUDE_CHROME_BIN:-}"
+CHROME_FLAGS="${DCLAUDE_CHROME_FLAGS:-}"
+
 # Colors for output (only if terminal supports it)
 if [[ -t 1 ]]; then
     readonly RED='\033[0;31m'
@@ -1106,6 +1112,161 @@ cmd_attach() {
     exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf attach-session -t "$session_name"
 }
 
+# Subcommand: launch Chrome with DevTools and ensure MCP configured
+cmd_chrome() {
+    local setup_only=false
+
+    # Parse flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --setup-only)
+                setup_only=true
+                shift
+                ;;
+            --port=*)
+                CHROME_PORT="${1#*=}"
+                shift
+                ;;
+            *)
+                error "Unknown option: $1"
+                info "Usage: dclaude chrome [--setup-only] [--port=PORT]"
+                exit 1
+                ;;
+        esac
+    done
+
+    info "Setting up Chrome DevTools integration"
+
+    # 1. Detect Chrome binary
+    local chrome_bin="$CHROME_BIN"
+    if [[ -z "$chrome_bin" ]]; then
+        debug "Auto-detecting Chrome binary"
+        if [[ "$(uname)" == "Darwin" ]]; then
+            # macOS
+            if [[ -f "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]]; then
+                chrome_bin="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+            elif [[ -f "/Applications/Chromium.app/Contents/MacOS/Chromium" ]]; then
+                chrome_bin="/Applications/Chromium.app/Contents/MacOS/Chromium"
+            fi
+        elif [[ "$(uname)" == "Linux" ]]; then
+            # Linux
+            chrome_bin=$(command -v google-chrome || command -v chromium-browser || command -v chromium || echo "")
+        fi
+
+        if [[ -z "$chrome_bin" ]]; then
+            error "Chrome not found. Set DCLAUDE_CHROME_BIN to specify location"
+            exit 1
+        fi
+        debug "Found Chrome: $chrome_bin"
+    fi
+
+    # 2. Setup profile directory
+    local profile_dir="$HOST_PATH/.dclaude/chrome/profiles/$CHROME_PROFILE"
+    mkdir -p "$profile_dir"
+    debug "Profile directory: $profile_dir"
+
+    # 3. Check/create .mcp.json
+    local mcp_json="$HOST_PATH/.mcp.json"
+    local mcp_port=""
+    local port_mismatch=false
+
+    if [[ -f "$mcp_json" ]]; then
+        debug "Found existing .mcp.json"
+        # Extract port from --browserUrl in .mcp.json
+        mcp_port=$(jq -r '.mcpServers.chrome.args[]? | select(startswith("--browserUrl=")) | split(":")[-1]' "$mcp_json" 2>/dev/null || echo "")
+
+        if [[ -n "$mcp_port" && "$mcp_port" != "$CHROME_PORT" ]]; then
+            port_mismatch=true
+        fi
+    else
+        debug "Creating .mcp.json"
+        cat > "$mcp_json" << EOF
+{
+  "mcpServers": {
+    "chrome": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--browserUrl=http://localhost:${CHROME_PORT}"
+      ]
+    }
+  }
+}
+EOF
+        success "Created .mcp.json with Chrome MCP server (port ${CHROME_PORT})"
+    fi
+
+    # 4. Warn if port mismatch
+    if [[ "$port_mismatch" == "true" ]]; then
+        warning "Port mismatch detected!"
+        echo ""
+        echo "  Chrome will launch on port:    ${CHROME_PORT}"
+        echo "  MCP expects (.mcp.json):       ${mcp_port}"
+        echo ""
+        warning "MCP will not be able to connect until .mcp.json is updated"
+        echo ""
+    fi
+
+    # 5. Exit if setup-only
+    if [[ "$setup_only" == "true" ]]; then
+        success "Setup complete (--setup-only mode)"
+        exit 0
+    fi
+
+    # 6. Check if Chrome already running on this port
+    if curl -s "http://localhost:${CHROME_PORT}/json/version" >/dev/null 2>&1; then
+        success "Chrome already running on port ${CHROME_PORT}"
+        curl -s "http://localhost:${CHROME_PORT}/json/version" | jq -r '"  Browser: " + .Browser'
+        exit 0
+    fi
+
+    # 7. Launch Chrome
+    info "Launching Chrome with remote debugging on port ${CHROME_PORT}"
+
+    local chrome_args=(
+        "--user-data-dir=$profile_dir"
+        "--remote-debugging-port=$CHROME_PORT"
+        "--no-first-run"
+        "--no-default-browser-check"
+        "--disable-default-apps"
+        "--disable-sync"
+        "--allow-insecure-localhost"
+    )
+
+    # Add user-specified flags
+    if [[ -n "$CHROME_FLAGS" ]]; then
+        debug "Adding custom flags: $CHROME_FLAGS"
+        read -ra custom_flags <<< "$CHROME_FLAGS"
+        chrome_args+=("${custom_flags[@]}")
+    fi
+
+    debug "Chrome command: $chrome_bin ${chrome_args[*]}"
+
+    # Launch Chrome in background
+    "$chrome_bin" "${chrome_args[@]}" >/dev/null 2>&1 &
+    local chrome_pid=$!
+
+    # 8. Wait for Chrome to be ready
+    info "Waiting for Chrome to start..."
+    local wait_count=0
+    while [[ $wait_count -lt 30 ]]; do
+        if curl -s "http://localhost:${CHROME_PORT}/json/version" >/dev/null 2>&1; then
+            success "Chrome is ready on port ${CHROME_PORT}"
+            curl -s "http://localhost:${CHROME_PORT}/json/version" | jq -r '"  Browser: " + .Browser + "\n  Protocol: " + ."Protocol-Version" + "\n  WebSocket: " + .webSocketDebuggerUrl'
+            echo ""
+            success "Chrome DevTools ready for MCP integration!"
+            info "Next step: Run 'dclaude' to start Claude with Chrome MCP"
+            exit 0
+        fi
+        sleep 0.5
+        ((wait_count++))
+    done
+
+    error "Chrome failed to start or remote debugging port not accessible"
+    exit 1
+}
+
 # Initialize HOST_PATH once for all commands
 HOST_PATH=$(get_host_path)
 
@@ -1125,6 +1286,10 @@ if [[ $# -gt 0 ]]; then
             shift
             cmd_exec "$@"
             ;;
+        chrome)
+            shift
+            cmd_chrome "$@"
+            ;;
         --help|-h|help)
             cat << 'EOF'
 dclaude - Dockerized Claude Code Launcher
@@ -1133,6 +1298,7 @@ Usage:
   dclaude [options]           Start new Claude session (default)
   dclaude new [options]       Start new Claude session (explicit)
   dclaude attach <session>    Attach to existing tmux session
+  dclaude chrome [options]    Launch Chrome with DevTools and MCP integration
   dclaude exec [command]      Execute command in container (default: bash)
   dclaude shell              Open bash shell in container
   dclaude --help             Show this help
@@ -1146,6 +1312,10 @@ Environment Variables:
   DCLAUDE_NETWORK            Network mode: auto, host, bridge
   DCLAUDE_DOCKER_SOCKET      Override Docker socket path
   DCLAUDE_TMUX_SESSION       Custom tmux session name (default: claude-TIMESTAMP)
+  DCLAUDE_CHROME_BIN         Chrome executable path (auto-detected if not set)
+  DCLAUDE_CHROME_PROFILE     Chrome profile name (default: claude)
+  DCLAUDE_CHROME_PORT        Chrome debugging port (default: 9222)
+  DCLAUDE_CHROME_FLAGS       Additional Chrome flags (default: empty)
 
 Examples:
   # Start new Claude session (auto-generated session name)
@@ -1162,6 +1332,12 @@ Examples:
 
   # Start with ephemeral container (removed on exit)
   DCLAUDE_RM=true dclaude
+
+  # Launch Chrome with DevTools for MCP integration
+  dclaude chrome
+  dclaude chrome --port=9223                    # Custom debugging port
+  dclaude chrome --setup-only                   # Just create .mcp.json, don't launch
+  DCLAUDE_CHROME_PROFILE=testing dclaude chrome # Use different profile
 
   # Open bash shell in running container
   dclaude exec

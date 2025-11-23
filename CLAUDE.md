@@ -212,6 +212,135 @@ set-option -g detach-on-destroy on
 - ❌ **Session switching bug**: Using `detach-on-destroy off` caused sessions to switch instead of exit (FIXED: use `on`)
 - ❌ **Input lag in second session**: Creating detached session then attaching caused double tmux processes (FIXED: use direct `new-session`)
 
+## Chrome DevTools Integration
+
+The `dclaude chrome` subcommand provides seamless integration between Claude and Chrome DevTools via the Model Context Protocol (MCP).
+
+### Architecture
+
+**Host-Container Model:**
+- Chrome runs on the **host** (macOS/Linux/Windows) with remote debugging enabled
+- Claude runs inside the **dclaude container**
+- MCP server (`chrome-devtools-mcp`) runs in the container and connects to Chrome on the host
+- Host networking mode enables `localhost` access from container to host
+
+### Usage
+
+```bash
+# Launch Chrome with DevTools and create .mcp.json configuration
+dclaude chrome
+
+# Custom debugging port
+dclaude chrome --port=9223
+
+# Just create .mcp.json without launching Chrome
+dclaude chrome --setup-only
+
+# Use different Chrome profile
+DCLAUDE_CHROME_PROFILE=testing dclaude chrome
+```
+
+### What `dclaude chrome` Does
+
+1. **Auto-detects Chrome** binary (macOS, Linux, Windows supported)
+2. **Creates profile directory** at `.dclaude/chrome/profiles/<profile-name>/`
+3. **Checks/creates `.mcp.json`** with `chrome-devtools-mcp` server configuration
+4. **Validates port consistency** between Chrome launch and `.mcp.json` config
+5. **Launches Chrome** with remote debugging on specified port (default: 9222)
+6. **Verifies connection** to Chrome DevTools Protocol endpoint
+
+### Chrome Launch Flags
+
+**Default flags (always set):**
+- `--user-data-dir=.dclaude/chrome/profiles/<profile>/` - Isolated profile per project
+- `--remote-debugging-port=<port>` - Enable DevTools Protocol (default: 9222)
+- `--no-first-run` - Skip first-run wizard
+- `--no-default-browser-check` - Don't ask to be default browser
+- `--disable-default-apps` - Skip default app installation
+- `--disable-sync` - Don't sync with Google account
+- `--allow-insecure-localhost` - Allow https on localhost without cert warnings
+
+**Custom flags via `DCLAUDE_CHROME_FLAGS`:**
+```bash
+# Example: Disable extensions and set window size
+DCLAUDE_CHROME_FLAGS="--disable-extensions --window-size=1920,1080" dclaude chrome
+```
+
+### Configuration
+
+**Environment Variables:**
+- `DCLAUDE_CHROME_BIN` - Chrome executable path (auto-detected if not set)
+- `DCLAUDE_CHROME_PROFILE` - Profile name (default: `claude`)
+- `DCLAUDE_CHROME_PORT` - Debugging port (default: `9222`)
+- `DCLAUDE_CHROME_FLAGS` - Additional Chrome flags (default: empty)
+
+### Port Mismatch Warning
+
+If `.mcp.json` already exists with a different port, `dclaude chrome` will warn but still launch:
+
+```
+⚠️  Warning: Port mismatch detected!
+
+  Chrome will launch on port:    9223
+  MCP expects (.mcp.json):       9222
+
+⚠️  MCP will not be able to connect until .mcp.json is updated
+```
+
+This ensures you're aware of configuration mismatches without blocking Chrome from launching.
+
+### Directory Structure
+
+```
+project-root/
+├── .mcp.json                    # MCP server configuration
+└── .dclaude/
+    └── chrome/
+        └── profiles/
+            ├── claude/          # Default profile
+            ├── testing/         # Alternative profiles
+            └── debug/
+```
+
+### Workflow Example
+
+```bash
+# 1. Launch Chrome with DevTools
+dclaude chrome
+# → Chrome opens with debugging on port 9222
+# → .mcp.json created with chrome-devtools-mcp configuration
+
+# 2. Start Claude in dclaude container
+dclaude
+# → Claude starts with Chrome MCP server enabled
+# → Can now interact with Chrome via MCP tools
+
+# 3. Claude can now:
+#    - List browser tabs
+#    - Navigate to URLs
+#    - Inspect DOM elements
+#    - Execute JavaScript
+#    - Take screenshots
+#    - Debug web applications
+```
+
+### Technical Details
+
+**Why Chrome runs on host:**
+- Chrome requires GUI access and native system integration
+- Container would need X11 forwarding or VNC (complex, slow)
+- Host Chrome + remote debugging is simpler and more performant
+
+**Why host networking works:**
+- Container shares host's network namespace
+- `localhost:9222` in container = `localhost:9222` on host
+- No port mapping or special networking required
+
+**MCP Server:**
+- Package: `chrome-devtools-mcp@latest`
+- Protocol: Chrome DevTools Protocol (CDP)
+- Connection: `--browserUrl=http://localhost:9222`
+
 ## Security Constraints
 - No sudo in container (removed for security)
 - Docker socket access is privileged - document risks
