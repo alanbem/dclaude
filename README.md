@@ -380,14 +380,129 @@ dclaude  # or DCLAUDE_SSH=auto dclaude
 **macOS**: Agent forwarding uses automatic socat proxy (adds ~0.5s startup)
 **Windows**: Limited support; key-mount recommended
 
+#### Loading SSH Keys (Agent Forwarding)
+
+When using agent forwarding, your SSH keys must be loaded into your **host's SSH agent**. The container accesses keys through the agent, not by reading key files.
+
+**Check if keys are loaded:**
+```bash
+# On your host machine
+ssh-add -l
+```
+
+If you see `The agent has no identities`, you need to load your key:
+
+**Load SSH key (one-time):**
+```bash
+# Load your SSH key
+ssh-add ~/.ssh/id_ed25519
+
+# Or load with macOS keychain (persists across reboots)
+ssh-add --apple-use-keychain ~/.ssh/id_ed25519
+```
+
+**Make it permanent (macOS):**
+
+Add to your `~/.ssh/config`:
+```
+Host *
+  AddKeysToAgent yes
+  UseKeychain yes
+  IdentityFile ~/.ssh/id_ed25519
+```
+
+This automatically loads your key when first used and stores the passphrase in macOS keychain.
+
+**Manage loaded keys:**
+```bash
+# List loaded keys
+ssh-add -l
+
+# Remove specific key
+ssh-add -d ~/.ssh/id_ed25519
+
+# Remove all keys
+ssh-add -D
+```
+
+#### How SSH Agent Forwarding Works
+
+**Linux:**
+- Direct socket mount: `$SSH_AUTH_SOCK` → `/tmp/ssh-agent` in container
+- No additional containers needed
+- Native performance
+
+**macOS:**
+- Docker Desktop has permission restrictions on the SSH agent socket
+- dclaude automatically creates a proxy container (`dclaude-ssh-proxy-<uid>`)
+- Uses `socat` to bridge permissions between host agent and container
+- Proxy runs once and is reused across sessions
+- Adds ~0.5s to first startup, then cached
+
+**Windows:**
+- Limited SSH agent support
+- Recommend using `key-mount` mode instead
+
 #### Testing SSH Access
 
 ```bash
-# Test GitHub SSH authentication
-DCLAUDE_SSH=key-mount dclaude "ssh -T git@github.com"
+# Verify keys are loaded on host first
+ssh-add -l
 
-# Clone a private repository
-DCLAUDE_SSH=key-mount dclaude "git clone git@github.com:private/repo.git"
+# Test GitHub SSH authentication from container
+dclaude exec ssh -T git@github.com
+# Expected: "Hi username! You've successfully authenticated..."
+
+# Test git operations
+dclaude exec git clone git@github.com:private/repo.git
+
+# Debug SSH connection issues
+dclaude exec ssh -Tv git@github.com
+```
+
+#### Troubleshooting SSH Authentication
+
+**"The agent has no identities":**
+```bash
+# Problem: No SSH keys loaded in host's SSH agent
+# Solution: Load your key on the host
+ssh-add ~/.ssh/id_ed25519
+
+# Verify it worked
+ssh-add -l
+```
+
+**"Permission denied (publickey)":**
+```bash
+# Check key is loaded
+ssh-add -l
+
+# Verify key has correct permissions on host
+chmod 600 ~/.ssh/id_ed25519
+chmod 644 ~/.ssh/id_ed25519.pub
+
+# Test connection with verbose output
+dclaude exec ssh -Tv git@github.com
+```
+
+**Keys disappear after reboot (macOS):**
+```bash
+# Use keychain integration for persistence
+ssh-add --apple-use-keychain ~/.ssh/id_ed25519
+
+# Or add to ~/.ssh/config (see "Make it permanent" above)
+```
+
+**Proxy container not starting (macOS):**
+```bash
+# Check if proxy container exists
+docker ps -a | grep dclaude-ssh-proxy
+
+# Remove stale proxy container
+docker rm -f dclaude-ssh-proxy-$(id -u)
+
+# Let dclaude recreate it on next run
+dclaude
 ```
 
 ### Configuration Mounting
