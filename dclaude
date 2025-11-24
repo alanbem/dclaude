@@ -15,6 +15,7 @@ readonly REMOVE_CONTAINER="${DCLAUDE_RM:-false}"
 DOCKER_SOCKET="${DCLAUDE_DOCKER_SOCKET:-}"
 readonly MOUNT_CONFIGS="${DCLAUDE_MOUNT_CONFIGS:-false}"
 readonly SSH_MODE="${DCLAUDE_SSH:-auto}"  # auto, agent-forwarding, key-mount, none
+readonly ENABLE_SYSTEM_CONTEXT="${DCLAUDE_SYSTEM_CONTEXT:-true}"  # Inform Claude about dclaude environment
 
 # Chrome configuration (not readonly to allow --port flag override)
 CHROME_PROFILE="${DCLAUDE_CHROME_PROFILE:-claude}"
@@ -472,6 +473,103 @@ get_container_name() {
     echo "dclaude-${path_hash:0:12}"
 }
 
+# Generate system context prompt for Claude
+generate_system_context() {
+    local network_mode="${1:-auto}"
+    local ssh_mode="${2:-auto}"
+    local has_docker="${3:-false}"
+
+    cat <<'EOF'
+
+# dclaude Environment Context
+
+You are running inside **dclaude** - a Docker container that emulates the host environment. This is important context for understanding your capabilities and limitations:
+
+## Container Architecture
+- **Host Emulation**: Your current working directory is mounted at the exact same path as on the host
+- **Path Mirroring**: All file paths work identically to native execution (e.g., `/Users/alice/project` in container = same path on host)
+- **Isolated Environment**: While you operate in a container, file operations affect the real host filesystem through volume mounts
+
+## Available Capabilities
+EOF
+
+    # Docker access
+    if [[ "$has_docker" == "true" ]]; then
+        cat <<'EOF'
+- **Docker Access**: You have access to the host's Docker daemon via mounted socket
+  - Can build, run, and manage Docker containers
+  - Can execute docker and docker-compose commands
+  - All Docker operations affect the host Docker daemon
+EOF
+    fi
+
+    # Network mode
+    case "$network_mode" in
+        host)
+            cat <<'EOF'
+- **Networking**: Host networking mode enabled
+  - Direct access to `localhost:PORT` services on the host
+  - Can communicate with other containers via localhost
+  - Full network stack sharing with host
+EOF
+            ;;
+        bridge)
+            cat <<'EOF'
+- **Networking**: Bridge networking mode (isolated network)
+  - Cannot directly access `localhost` services
+  - Use `host.docker.internal:PORT` to access host services
+  - Container has isolated network namespace
+EOF
+            ;;
+    esac
+
+    # SSH authentication
+    case "$ssh_mode" in
+        agent-forwarding)
+            cat <<'EOF'
+- **SSH Authentication**: Agent forwarding enabled
+  - SSH keys available via forwarded agent (secure, keys never in container)
+  - Can authenticate to GitHub, GitLab, and other SSH services
+  - Private keys remain on host machine only
+EOF
+            ;;
+        key-mount)
+            cat <<'EOF'
+- **SSH Authentication**: SSH keys mounted (read-only)
+  - Host's ~/.ssh directory mounted into container
+  - Can authenticate to GitHub, GitLab, and other SSH services
+  - Keys are read-only, cannot be modified
+EOF
+            ;;
+        none)
+            cat <<'EOF'
+- **SSH Authentication**: Not configured
+  - SSH keys not available in container
+  - Cannot authenticate to remote Git repositories via SSH
+  - Consider using HTTPS authentication for Git operations
+EOF
+            ;;
+    esac
+
+    cat <<'EOF'
+
+## Development Tools Available
+- **Languages**: Node.js 20+, Python 3
+- **Package Managers**: npm, pip, Homebrew/Linuxbrew
+- **Tools**: git, gh (GitHub CLI), docker, docker-compose, curl, tmux, nano
+- **Shell**: bash (your commands execute in bash shell)
+
+## Important Notes
+- File operations are performed on the host filesystem (not isolated)
+- Changes persist after container exits (files are on host)
+- System packages can be installed with apt-get, Homebrew, or npm
+- Use relative paths when possible - absolute paths work due to path mirroring
+- Git operations work normally - repository sees correct paths
+
+When suggesting commands or file operations, you can treat this environment as if running natively on the host, with the benefits of containerization for tool isolation.
+EOF
+}
+
 # Handle SSH authentication based on DCLAUDE_SSH mode
 # Setup SSH proxy container for macOS
 setup_ssh_proxy_container() {
@@ -872,7 +970,7 @@ main() {
             # Always create a new tmux session (never reattach)
             debug "Creating new tmux session running Claude"
             info "Starting new Claude session..."
-            exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "$@"
+            exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
         fi
     fi
 
@@ -956,6 +1054,21 @@ main() {
         debug "Docker command: docker ${DOCKER_ARGS[*]} $IMAGE $*"
     fi
 
+    # Generate system context for Claude (if enabled)
+    local claude_args=()
+    if [[ "$ENABLE_SYSTEM_CONTEXT" == "true" ]]; then
+        local has_docker="false"
+        [[ -n "$DOCKER_SOCKET" ]] && [[ -S "$DOCKER_SOCKET" ]] && has_docker="true"
+
+        local system_context
+        system_context=$(generate_system_context "$network_mode" "$SSH_MODE" "$has_docker")
+
+        claude_args+=("--append-system-prompt" "$system_context")
+        debug "System context enabled"
+    else
+        debug "System context disabled (DCLAUDE_SYSTEM_CONTEXT=$ENABLE_SYSTEM_CONTEXT)"
+    fi
+
     # Run Claude in Docker
     if [[ "$REMOVE_CONTAINER" == "false" ]]; then
         # For persistent containers, run tini with tail daemon for zombie reaping
@@ -998,14 +1111,14 @@ main() {
         # Always create a new tmux session (never reattach)
         debug "Creating new tmux session running Claude"
         info "Starting new Claude session..."
-        exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "$@"
+        exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
     else
         # Ephemeral container - run directly
         # Add TTY flags here as we are running interactively
         if [[ -n "$tty_flags" ]]; then
             DOCKER_ARGS+=($tty_flags)
         fi
-        exec docker "${DOCKER_ARGS[@]}" "$IMAGE" "$@"
+        exec docker "${DOCKER_ARGS[@]}" "$IMAGE" "${claude_args[@]}" "$@"
     fi
 }
 

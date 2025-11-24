@@ -17,6 +17,8 @@ AI assistant guidance for working with the dclaude (Dockerized Claude Code) proj
 
 **Key Innovation**: Path mirroring - container mounts host directory at identical path, enabling seamless file operations as if running natively.
 
+**System Context Feature**: Claude CLI receives environment information via `--append-system-prompt` flag, informing it about the containerized environment, capabilities, and limitations.
+
 ## Critical Technical Context
 
 ### Architecture Components
@@ -26,6 +28,47 @@ AI assistant guidance for working with the dclaude (Dockerized Claude Code) proj
 - **dclaude script**: Launcher handling platform detection, volume management, path mirroring, config mounting
 - **Docker volumes**: `dclaude-config`, `dclaude-cache`, `dclaude-claude` for persistent data
 - **Config mounting**: Optional read-only mounting of host configs (SSH, Docker, Git, GitHub CLI, NPM)
+- **System Context**: Automatic environment awareness via `--append-system-prompt`
+
+### System Context (Environment Awareness)
+
+**Purpose**: Inform Claude about its containerized environment to enable better decision-making and more accurate suggestions.
+
+**Implementation**:
+- Function: `generate_system_context()` in dclaude script
+- Parameters: network_mode, ssh_mode, has_docker
+- Output: Markdown-formatted system prompt explaining the environment
+- Delivery: Passed via `--append-system-prompt` flag to Claude CLI
+- Control: `DCLAUDE_SYSTEM_CONTEXT` environment variable (default: true)
+
+**What Claude Learns**:
+1. **Container Architecture**:
+   - Running in Docker with path mirroring
+   - File operations affect host filesystem
+   - Current directory mounted at identical path
+
+2. **Available Capabilities**:
+   - Docker socket access (if available)
+   - Network mode (host vs bridge) and localhost implications
+   - SSH authentication method (agent-forwarding, key-mount, or none)
+
+3. **Development Tools**:
+   - Languages: Node.js 20+, Python 3
+   - Package managers: npm, pip, Homebrew
+   - CLI tools: git, gh, docker, docker-compose
+
+4. **Important Constraints**:
+   - Bridge mode: cannot access localhost directly
+   - Agent forwarding: keys not in filesystem
+   - Path mirroring: absolute paths work as on host
+
+**Benefits**:
+- Claude understands networking limitations (bridge vs host mode)
+- Better Docker command suggestions (knows it has daemon access)
+- Appropriate SSH authentication advice based on actual setup
+- Accurate file path handling (understands path mirroring)
+
+**User Documentation**: See README.md "System Context (Environment Awareness)" section
 
 ### Process Management with Tini
 

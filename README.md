@@ -326,6 +326,7 @@ DCLAUDE_NETWORK=auto dclaude  # default
 | `DCLAUDE_DOCKER_SOCKET` | Docker socket path | `/var/run/docker.sock` | Valid socket path |
 | `DCLAUDE_NETWORK` | Network mode | `auto` | `auto`, `host`, `bridge` |
 | `DCLAUDE_REGISTRY` | Docker registry | `docker.io` | Registry URL |
+| `DCLAUDE_SYSTEM_CONTEXT` | Inform Claude about dclaude environment | `true` | `true`, `false` |
 | `CLAUDE_MODEL` | Claude model to use | (Claude's default) | Model name |
 | **SSH Authentication** | | | |
 | `DCLAUDE_SSH` | SSH authentication mode | `auto` | `auto`, `agent-forwarding`, `key-mount`, `none` |
@@ -337,6 +338,44 @@ DCLAUDE_NETWORK=auto dclaude  # default
 | `DCLAUDE_MOUNT_NPM` | Mount `.npmrc` file | `true`* | `true`, `false` |
 
 *When `DCLAUDE_MOUNT_CONFIGS=true`
+
+### System Context (Environment Awareness)
+
+By default, dclaude informs Claude about its containerized environment through an appended system prompt. This helps Claude understand its capabilities and make better decisions.
+
+**What Claude learns:**
+- Running in a Docker container with path mirroring
+- Docker socket access availability
+- Network mode (host vs bridge) and localhost accessibility
+- SSH authentication setup (agent forwarding, key mounting, or none)
+- Available development tools (Node.js, Python, Homebrew, etc.)
+- File operations affect the host filesystem
+
+**Benefits:**
+- Claude understands `localhost` limitations in bridge mode
+- Better suggestions for Docker commands
+- Awareness of SSH authentication capabilities
+- More accurate path and file handling advice
+
+**Example context provided:**
+```markdown
+# dclaude Environment Context
+
+You are running inside dclaude - a Docker container that emulates the host environment.
+
+## Container Architecture
+- Host Emulation: Your current working directory is mounted at the exact same path
+- Path Mirroring: All file paths work identically to native execution
+- Docker Access: You have access to the host's Docker daemon
+- Networking: Host networking mode enabled (or bridge mode)
+- SSH Authentication: Agent forwarding enabled (or key-mount/none)
+```
+
+**Disable system context:**
+```bash
+# If you prefer Claude not to receive environment information
+DCLAUDE_SYSTEM_CONTEXT=false dclaude
+```
 
 ### SSH Authentication
 
