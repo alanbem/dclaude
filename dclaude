@@ -478,6 +478,8 @@ generate_system_context() {
     local network_mode="${1:-auto}"
     local ssh_mode="${2:-auto}"
     local has_docker="${3:-false}"
+    local platform="${4:-unknown}"
+    local docker_socket="${5:-}"
 
     cat <<'EOF'
 
@@ -489,6 +491,65 @@ You are running inside **dclaude** - a Docker container that emulates the host e
 - **Host Emulation**: Your current working directory is mounted at the exact same path as on the host
 - **Path Mirroring**: All file paths work identically to native execution (e.g., `/Users/alice/project` in container = same path on host)
 - **Isolated Environment**: While you operate in a container, file operations affect the real host filesystem through volume mounts
+
+## Host Environment
+EOF
+
+    # Platform info
+    case "$platform" in
+        darwin)
+            echo "- **Host OS**: macOS"
+            ;;
+        linux)
+            echo "- **Host OS**: Linux"
+            ;;
+        windows)
+            echo "- **Host OS**: Windows"
+            ;;
+        *)
+            echo "- **Host OS**: Unknown"
+            ;;
+    esac
+
+    # Architecture
+    local arch=$(uname -m 2>/dev/null || echo "unknown")
+    case "$arch" in
+        arm64|aarch64)
+            echo "- **Architecture**: ARM64 (Apple Silicon / ARM)"
+            ;;
+        x86_64|amd64)
+            echo "- **Architecture**: x86_64 (Intel/AMD)"
+            ;;
+        *)
+            echo "- **Architecture**: $arch"
+            ;;
+    esac
+
+    # Docker provider detection from socket path
+    if [[ -n "$docker_socket" ]]; then
+        case "$docker_socket" in
+            */.orbstack/*)
+                echo "- **Docker Provider**: OrbStack (high performance, native macOS integration)"
+                ;;
+            */.docker/run/*)
+                echo "- **Docker Provider**: Docker Desktop"
+                ;;
+            */.colima/*)
+                echo "- **Docker Provider**: Colima"
+                ;;
+            */.rd/*)
+                echo "- **Docker Provider**: Rancher Desktop"
+                ;;
+            /var/run/docker.sock)
+                echo "- **Docker Provider**: Docker Engine (native Linux)"
+                ;;
+            *)
+                echo "- **Docker Provider**: Custom Docker setup"
+                ;;
+        esac
+    fi
+
+    cat <<'EOF'
 
 ## Available Capabilities
 EOF
@@ -965,10 +1026,10 @@ main() {
         [[ -n "$DOCKER_SOCKET" ]] && [[ -S "$DOCKER_SOCKET" ]] && has_docker="true"
 
         local system_context
-        system_context=$(generate_system_context "$network_mode" "$resolved_ssh_mode" "$has_docker")
+        system_context=$(generate_system_context "$network_mode" "$resolved_ssh_mode" "$has_docker" "$platform" "$DOCKER_SOCKET")
 
         claude_args+=("--append-system-prompt" "$system_context")
-        debug "System context enabled (${#system_context} chars, has_docker=$has_docker, ssh=$resolved_ssh_mode)"
+        debug "System context enabled (${#system_context} chars, has_docker=$has_docker, ssh=$resolved_ssh_mode, platform=$platform)"
         if [[ "$DEBUG" == "true" ]]; then
             debug "System context preview: ${system_context:0:100}..."
         fi
