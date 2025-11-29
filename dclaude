@@ -1281,6 +1281,34 @@ cmd_exec() {
     fi
 }
 
+# Subcommand: authenticate GitHub CLI
+cmd_gh() {
+    # Generate container name based on current directory
+    local container_name=$(get_container_name "$HOST_PATH")
+
+    # Check if container exists
+    if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        error "No container found for this directory"
+        info "Run 'dclaude' first to create a container"
+        exit 1
+    fi
+
+    # Check if container is running
+    local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+    if [[ "$container_status" != "running" ]]; then
+        if [[ "$container_status" == "exited" ]]; then
+            info "Restarting container: $container_name"
+            docker start "$container_name" >/dev/null
+        else
+            error "Container $container_name is in unexpected state: $container_status"
+            exit 1
+        fi
+    fi
+
+    info "Starting GitHub CLI authentication..."
+    exec docker exec -it -u claude "$container_name" gh auth login
+}
+
 # Subcommand: attach to existing tmux session
 cmd_attach() {
     local session_name="${1:-${DCLAUDE_TMUX_SESSION:-}}"
@@ -1513,6 +1541,10 @@ if [[ $# -gt 0 ]]; then
             shift
             cmd_chrome "$@"
             ;;
+        gh)
+            shift
+            cmd_gh "$@"
+            ;;
         --help|-h|help)
             cat << 'EOF'
 dclaude - Dockerized Claude Code Launcher
@@ -1522,6 +1554,7 @@ Usage:
   dclaude new [options]       Start new Claude session (explicit)
   dclaude attach <session>    Attach to existing tmux session
   dclaude chrome [options]    Launch Chrome with DevTools and MCP integration
+  dclaude gh                  Authenticate GitHub CLI (runs gh auth login)
   dclaude exec [command]      Execute command in container (default: bash)
   dclaude shell              Open bash shell in container
   dclaude --help             Show this help
@@ -1561,6 +1594,9 @@ Examples:
   dclaude chrome --port=9223                    # Custom debugging port
   dclaude chrome --setup-only                   # Just create .mcp.json, don't launch
   DCLAUDE_CHROME_PROFILE=testing dclaude chrome # Use different profile
+
+  # Authenticate GitHub CLI (persists in dclaude-config volume)
+  dclaude gh
 
   # Open bash shell in running container
   dclaude exec
