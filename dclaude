@@ -387,18 +387,20 @@ detect_network_capability() {
 
 # Create Docker volumes if they don't exist
 create_volumes() {
-    # Only create the essential .claude volume
-    local volume="${VOLUME_PREFIX}-claude"
+    # Create essential volumes for persistence
+    local volumes=("${VOLUME_PREFIX}-claude" "${VOLUME_PREFIX}-config")
 
-    if ! docker volume inspect "$volume" &> /dev/null; then
-        info "Creating volume: $volume"
-        if ! docker volume create "$volume" > /dev/null; then
-            error "Failed to create volume: $volume"
-            exit 1
+    for volume in "${volumes[@]}"; do
+        if ! docker volume inspect "$volume" &> /dev/null; then
+            info "Creating volume: $volume"
+            if ! docker volume create "$volume" > /dev/null; then
+                error "Failed to create volume: $volume"
+                exit 1
+            fi
+        else
+            debug "Volume exists: $volume"
         fi
-    else
-        debug "Volume exists: $volume"
-    fi
+    done
 }
 
 # Pull or update the Docker image
@@ -1119,6 +1121,8 @@ main() {
         -v "${HOST_PATH}:${HOST_PATH}"
         # Mount persistent Claude configuration volume
         -v "${VOLUME_PREFIX}-claude:/home/claude/.claude"
+        # Mount persistent config volume (gh, etc.)
+        -v "${VOLUME_PREFIX}-config:/home/claude/.config"
         # Set working directory
         -w "${HOST_PATH}"
         # Network mode
