@@ -941,7 +941,11 @@ main() {
         system_context=$(generate_system_context "$network_mode" "$SSH_MODE" "$has_docker")
 
         claude_args+=("--append-system-prompt" "$system_context")
-        debug "System context enabled"
+        debug "System context enabled (${#system_context} chars)"
+        if [[ "$DEBUG" == "true" ]]; then
+            debug "Claude args: ${claude_args[*]}"
+            debug "System context preview: ${system_context:0:100}..."
+        fi
     else
         debug "System context disabled (DCLAUDE_SYSTEM_CONTEXT=$ENABLE_SYSTEM_CONTEXT)"
     fi
@@ -998,6 +1002,7 @@ main() {
 
             # Always create a new tmux session (never reattach)
             debug "Creating new tmux session running Claude"
+            debug "Full command: claude ${claude_args[*]} $*"
             info "Starting new Claude session..."
             exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
         fi
@@ -1124,6 +1129,7 @@ main() {
 
         # Always create a new tmux session (never reattach)
         debug "Creating new tmux session running Claude"
+        debug "Full command: claude ${claude_args[*]} $*"
         info "Starting new Claude session..."
         exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
     else
@@ -1132,6 +1138,7 @@ main() {
         if [[ -n "$tty_flags" ]]; then
             DOCKER_ARGS+=($tty_flags)
         fi
+        debug "Full command: claude ${claude_args[*]} $*"
         exec docker "${DOCKER_ARGS[@]}" "$IMAGE" "${claude_args[@]}" "$@"
     fi
 }
