@@ -531,14 +531,20 @@ EOF
   - SSH keys available via forwarded agent (secure, keys never in container)
   - Can authenticate to GitHub, GitLab, and other SSH services
   - Private keys remain on host machine only
+  - **Important**: Keys must be loaded in host's SSH agent (`ssh-add -l` to verify)
+  - On macOS: Proxy container (`dclaude-ssh-proxy-*`) bridges permissions automatically
+  - If git fails with auth errors, user needs to run `ssh-add ~/.ssh/id_ed25519` on host
+  - Socket location in container: $SSH_AUTH_SOCK (typically /tmp/ssh-proxy/agent)
 EOF
             ;;
         key-mount)
             cat <<'EOF'
 - **SSH Authentication**: SSH keys mounted (read-only)
-  - Host's ~/.ssh directory mounted into container
+  - Host's ~/.ssh directory mounted into container at /home/claude/.ssh
   - Can authenticate to GitHub, GitLab, and other SSH services
   - Keys are read-only, cannot be modified
+  - SSH agent not required - keys read directly from filesystem
+  - Use ssh-add inside container if agent needed
 EOF
             ;;
         none)
@@ -546,7 +552,8 @@ EOF
 - **SSH Authentication**: Not configured
   - SSH keys not available in container
   - Cannot authenticate to remote Git repositories via SSH
-  - Consider using HTTPS authentication for Git operations
+  - Recommend using HTTPS authentication for Git operations
+  - Or restart with DCLAUDE_SSH=agent-forwarding or DCLAUDE_SSH=key-mount
 EOF
             ;;
     esac
