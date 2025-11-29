@@ -116,6 +116,16 @@ RUN mkdir -p /home/claude/workspace \
     /home/claude/.config \
     /home/claude/.cache
 
+# Pre-populate SSH known_hosts with common Git hosting services
+# Prevents "Host key verification failed" on first SSH connection
+RUN mkdir -p /home/claude/.ssh && \
+    chmod 700 /home/claude/.ssh && \
+    ssh-keyscan github.com >> /home/claude/.ssh/known_hosts 2>/dev/null && \
+    ssh-keyscan gitlab.com >> /home/claude/.ssh/known_hosts 2>/dev/null && \
+    ssh-keyscan bitbucket.org >> /home/claude/.ssh/known_hosts 2>/dev/null && \
+    chmod 644 /home/claude/.ssh/known_hosts && \
+    chown -R claude:claude /home/claude/.ssh
+
 # Switch back to root for entrypoint permission handling
 USER root
 

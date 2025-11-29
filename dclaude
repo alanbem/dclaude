@@ -596,12 +596,7 @@ EOF
   - On macOS: Proxy container (`dclaude-ssh-proxy-*`) bridges permissions automatically
   - If git fails with auth errors, user needs to run `ssh-add ~/.ssh/id_ed25519` on host
   - Socket location in container: $SSH_AUTH_SOCK (typically /tmp/ssh-proxy/agent)
-  - **First SSH connection**: If you get "Host key verification failed":
-    ```bash
-    mkdir -p ~/.ssh && chmod 700 ~/.ssh
-    ssh-keyscan github.com >> ~/.ssh/known_hosts
-    ```
-    Then retry the SSH/git operation. This is normal on first connection to a host.
+  - Known hosts pre-configured for: GitHub, GitLab, Bitbucket
 EOF
             ;;
         key-mount)
@@ -612,6 +607,7 @@ EOF
   - Keys are read-only, cannot be modified
   - SSH agent not required - keys read directly from filesystem
   - Use ssh-add inside container if agent needed
+  - Note: Uses host's known_hosts file (not container's pre-configured one)
 EOF
             ;;
         none)
