@@ -931,6 +931,12 @@ main() {
     # Detect TTY availability
     local tty_flags=$(detect_tty_flags)
 
+    # Detect Docker socket early (needed for system context generation)
+    if [[ -z "$DOCKER_SOCKET" ]]; then
+        DOCKER_SOCKET=$(detect_docker_socket) || true
+    fi
+    debug "Docker socket detection: ${DOCKER_SOCKET:-<not found>}"
+
     # Generate system context for Claude (if enabled) - must be done early for all code paths
     local claude_args=()
     if [[ "$ENABLE_SYSTEM_CONTEXT" == "true" ]]; then
@@ -941,9 +947,8 @@ main() {
         system_context=$(generate_system_context "$network_mode" "$SSH_MODE" "$has_docker")
 
         claude_args+=("--append-system-prompt" "$system_context")
-        debug "System context enabled (${#system_context} chars)"
+        debug "System context enabled (${#system_context} chars, has_docker=$has_docker)"
         if [[ "$DEBUG" == "true" ]]; then
-            debug "Claude args: ${claude_args[*]}"
             debug "System context preview: ${system_context:0:100}..."
         fi
     else
@@ -1002,7 +1007,7 @@ main() {
 
             # Always create a new tmux session (never reattach)
             debug "Creating new tmux session running Claude"
-            debug "Full command: claude ${claude_args[*]} $*"
+            debug "Claude args count: ${#claude_args[@]}, user args: $*"
             info "Starting new Claude session..."
             exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
         fi
@@ -1052,11 +1057,7 @@ main() {
         DOCKER_ARGS+=(-e "COLORTERM=${COLORTERM}")
     fi
 
-    # Detect and mount Docker socket if it exists
-    if [[ -z "$DOCKER_SOCKET" ]]; then
-        DOCKER_SOCKET=$(detect_docker_socket) || true
-    fi
-
+    # Mount Docker socket if detected (detection done earlier for system context)
     if [[ -n "$DOCKER_SOCKET" ]] && [[ -S "$DOCKER_SOCKET" ]]; then
         DOCKER_ARGS+=(-v "${DOCKER_SOCKET}:/var/run/docker.sock")
         debug "Docker socket mounted: $DOCKER_SOCKET"
@@ -1129,7 +1130,7 @@ main() {
 
         # Always create a new tmux session (never reattach)
         debug "Creating new tmux session running Claude"
-        debug "Full command: claude ${claude_args[*]} $*"
+        debug "Claude args count: ${#claude_args[@]}, user args: $*"
         info "Starting new Claude session..."
         exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
     else
@@ -1138,7 +1139,7 @@ main() {
         if [[ -n "$tty_flags" ]]; then
             DOCKER_ARGS+=($tty_flags)
         fi
-        debug "Full command: claude ${claude_args[*]} $*"
+        debug "Claude args count: ${#claude_args[@]}, user args: $*"
         exec docker "${DOCKER_ARGS[@]}" "$IMAGE" "${claude_args[@]}" "$@"
     fi
 }
