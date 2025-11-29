@@ -937,6 +937,27 @@ main() {
     fi
     debug "Docker socket detection: ${DOCKER_SOCKET:-<not found>}"
 
+    # Resolve SSH mode from 'auto' to actual mode (needed for system context)
+    local resolved_ssh_mode="$SSH_MODE"
+    if [[ "$SSH_MODE" == "auto" ]]; then
+        # Same auto-detection logic as handle_ssh_auth()
+        if [[ "$MOUNT_CONFIGS" == "true" ]] && [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
+            resolved_ssh_mode="key-mount"
+            debug "SSH mode resolved: key-mount (DCLAUDE_MOUNT_CONFIGS=true)"
+        elif [[ -n "${SSH_AUTH_SOCK:-}" ]] && [[ -S "${SSH_AUTH_SOCK}" ]]; then
+            resolved_ssh_mode="agent-forwarding"
+            debug "SSH mode resolved: agent-forwarding (active agent detected)"
+        elif [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
+            resolved_ssh_mode="key-mount"
+            debug "SSH mode resolved: key-mount (SSH directory detected)"
+        else
+            resolved_ssh_mode="none"
+            debug "SSH mode resolved: none (no SSH agent or keys found)"
+        fi
+    else
+        debug "SSH mode: $resolved_ssh_mode (user-specified)"
+    fi
+
     # Generate system context for Claude (if enabled) - must be done early for all code paths
     local claude_args=()
     if [[ "$ENABLE_SYSTEM_CONTEXT" == "true" ]]; then
@@ -944,10 +965,10 @@ main() {
         [[ -n "$DOCKER_SOCKET" ]] && [[ -S "$DOCKER_SOCKET" ]] && has_docker="true"
 
         local system_context
-        system_context=$(generate_system_context "$network_mode" "$SSH_MODE" "$has_docker")
+        system_context=$(generate_system_context "$network_mode" "$resolved_ssh_mode" "$has_docker")
 
         claude_args+=("--append-system-prompt" "$system_context")
-        debug "System context enabled (${#system_context} chars, has_docker=$has_docker)"
+        debug "System context enabled (${#system_context} chars, has_docker=$has_docker, ssh=$resolved_ssh_mode)"
         if [[ "$DEBUG" == "true" ]]; then
             debug "System context preview: ${system_context:0:100}..."
         fi
