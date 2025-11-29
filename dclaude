@@ -566,6 +566,13 @@ EOF
 - **Tools**: git, gh (GitHub CLI), docker, docker-compose, curl, tmux, nano
 - **Shell**: bash (your commands execute in bash shell)
 
+## Git Configuration Requirements
+**IMPORTANT**: Before performing any git operations (commit, push, etc.), you MUST:
+1. Check if git is configured: `git config user.name` and `git config user.email`
+2. If either is missing/empty, ASK the user for their git name and email
+3. Configure git with: `git config --global user.name "User Name"` and `git config --global user.email "user@example.com"`
+4. Never assume or make up git credentials - always ask the user first
+
 ## Important Notes
 - File operations are performed on the host filesystem (not isolated)
 - Changes persist after container exits (files are on host)
