@@ -89,6 +89,8 @@ detect_platform() {
 
 # Detect Docker socket path based on platform
 detect_docker_socket() {
+    info "Detecting Docker socket..."
+
     # Prefer Docker context (tells us the active socket)
     if command -v docker &> /dev/null && command -v jq &> /dev/null; then
         debug "Checking Docker context for socket path"
@@ -228,6 +230,8 @@ run_with_timeout() {
 
 # Detect network capability (host vs bridge)
 detect_network_capability() {
+    info "Detecting network mode..."
+
     local cache_dir="${HOME}/.dclaude"
     local cache_file="${cache_dir}/network-mode"
     local test_timeout=10
@@ -405,6 +409,7 @@ create_volumes() {
                 error "Failed to create volume: $volume"
                 exit 1
             fi
+            debug "Volume created successfully: $volume"
         else
             debug "Volume exists: $volume"
         fi
@@ -675,6 +680,8 @@ setup_ssh_proxy_container() {
     fi
 
     info "Starting SSH agent proxy container..."
+    debug "Proxy container name: $proxy_container"
+    debug "Bridging macOS SSH agent socket permissions"
 
     # Create the proxy container that runs socat as root
     # This container just bridges the permission gap and exits

@@ -11,6 +11,54 @@ AI assistant guidance for working with the dclaude (Dockerized Claude Code) proj
 - Technical comments should explain WHY something works a certain way, not WHAT was changed
 - Communication with user happens in chat, not in code comments
 
+### Output Message Hierarchy
+
+The dclaude script uses a strict hierarchy for output messages to provide predictable and debuggable output:
+
+**Message Types and Colors:**
+- `error()` - RED - Critical failures (always shown)
+- `warning()` - YELLOW - Important notices (always shown)
+- `success()` - GREEN - Completed operations (hidden in quiet mode)
+- `info()` - BLUE - High-level operation summaries (hidden in quiet mode)
+- `debug()` - CYAN - Implementation details (only shown in debug mode)
+
+**Hierarchy Rules:**
+1. ✅ **Info without debug** - OK for simple operations
+   ```bash
+   info "Starting new Claude session..."
+   # No debug needed - operation is straightforward
+   ```
+
+2. ✅ **Info with debug** - OK for complex operations
+   ```bash
+   info "Detecting Docker socket..."
+   debug "Checking Docker context for socket path"
+   debug "Socket found: $socket_path"
+   debug "Verified socket is accessible"
+   ```
+
+3. ❌ **Debug without info** - NOT OK (orphaned debug)
+   ```bash
+   # WRONG - Where's the context?
+   debug "Socket found at /var/run/docker.sock"
+
+   # RIGHT - Add info message above
+   info "Detecting Docker socket..."
+   debug "Socket found at /var/run/docker.sock"
+   ```
+
+**Output Modes:**
+- **Normal** (`QUIET=false, DEBUG=false`): error, warning, success, info
+- **Quiet** (`QUIET=true`): error, warning only (QUIET overrides DEBUG)
+- **Debug** (`DEBUG=true, QUIET=false`): all messages including debug details
+
+**Principles:**
+- Info messages explain WHAT is happening (user-facing summary)
+- Debug messages explain HOW it's happening (implementation details)
+- Every debug must have an info parent for context
+- Simple operations don't need debug details
+- Complex operations should provide debug details for troubleshooting
+
 ## Core Understanding
 
 **Project Purpose**: Containerizes Claude Code CLI to run in Docker with host-like capabilities while maintaining isolation.
