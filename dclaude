@@ -476,7 +476,6 @@ get_host_path() {
         exit 1
     fi
 
-    debug "Host path: $host_path"
     echo "$host_path"
 }
 
@@ -934,6 +933,7 @@ main() {
     # All arguments are preserved as-is for Claude
 
     info "Verifying environment..."
+    debug "Host path: $HOST_PATH"
 
     # Check prerequisites
     check_docker
