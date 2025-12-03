@@ -63,7 +63,8 @@ info() {
 }
 
 debug() {
-    if [[ "$DEBUG" == "true" ]]; then
+    # QUIET overrides DEBUG - if quiet, suppress debug too
+    if [[ "$QUIET" != "true" ]] && [[ "$DEBUG" == "true" ]]; then
         echo -e "${CYAN}Debug: $1${NC}" >&2
     fi
 }
