@@ -16,7 +16,6 @@ docker/
 *.swo
 
 # Documentation (except README)
-TASK.md
 CLAUDE.md
 
 # macOS
@@ -44,16 +43,11 @@ dist/
 .gitlab-ci.yml
 .circleci/
 
-# Local testing
-bin/
-
 # Development tools
 Makefile
 scripts/
 completions/
-examples/
 .editorconfig
 
 # Old/backup files
 *.old
-TASK.md

@@ -127,6 +127,116 @@ dclaude
 - **Ephemeral (default)**: `DCLAUDE_RM=true` - Container removed after exit
 - **Persistent**: `DCLAUDE_RM=false` - Container reused across sessions
 
+**Session Management (Persistent Containers):**
+
+Persistent containers use tmux for transparent session management:
+- Each `dclaude` invocation creates a new tmux session with a unique name
+- Sessions run independently and don't interfere with each other
+- When you exit Claude, the session ends cleanly without switching to other sessions
+- Tmux runs in "transparent mode" - you won't notice it's there
+
+**Tmux Configuration:**
+- **Zero input lag**: `escape-time 0` eliminates keyboard delays
+- **Mouse support**: Native scrollback integration with modern terminals
+- **No prefix key**: Tmux is invisible - use your terminal normally
+- **Session isolation**: Each session is independent (`.tmux.conf`)
+- **Clean exit behavior**: Sessions detach instead of switching when Claude exits
+
+This architecture enables multiple concurrent Claude instances while maintaining a native terminal feel.
+
+### Chrome DevTools Integration
+
+Integrate Claude with Chrome DevTools for browser automation and debugging via the Model Context Protocol (MCP).
+
+```bash
+# Launch Chrome with DevTools and create .mcp.json configuration
+dclaude chrome
+
+# Custom debugging port
+dclaude chrome --port=9223
+
+# Just create .mcp.json without launching Chrome
+dclaude chrome --setup-only
+
+# Use different Chrome profile
+DCLAUDE_CHROME_PROFILE=testing dclaude chrome
+```
+
+**How it works:**
+1. `dclaude chrome` auto-detects your Chrome binary
+2. Creates an isolated profile in `.dclaude/chrome/profiles/<profile-name>/`
+3. Creates/updates `.mcp.json` with Chrome MCP server configuration
+4. Launches Chrome with remote debugging enabled (default port: 9222)
+5. Claude can now interact with Chrome via MCP tools
+
+**Chrome capabilities:**
+- List and navigate browser tabs
+- Inspect DOM elements and execute JavaScript
+- Take screenshots and debug web applications
+- Automate browser interactions
+
+**Environment variables:**
+- `DCLAUDE_CHROME_BIN` - Chrome executable path (auto-detected if not set)
+- `DCLAUDE_CHROME_PROFILE` - Profile name (default: `claude`)
+- `DCLAUDE_CHROME_PORT` - Debugging port (default: `9222`)
+- `DCLAUDE_CHROME_FLAGS` - Additional Chrome launch flags
+
+**Requirements:**
+- Host networking mode (automatically used on compatible platforms)
+- Chrome runs on host, Claude in container connects via localhost
+
+**Example workflow:**
+```bash
+# 1. Launch Chrome with DevTools
+dclaude chrome
+
+# 2. Start Claude (will use Chrome MCP automatically)
+dclaude
+
+# 3. Claude can now interact with Chrome
+# "Navigate to github.com and take a screenshot"
+# "List all open tabs"
+# "Click the login button on this page"
+```
+
+### GitHub CLI Authentication
+
+Authenticate GitHub CLI (`gh`) inside the dclaude container for repository operations.
+
+```bash
+# Authenticate GitHub CLI (persists in dclaude-config volume)
+dclaude gh
+```
+
+**How it works:**
+1. Finds or creates the dclaude container for your current directory
+2. Starts/restarts the container if needed
+3. Runs `gh auth login` interactively in the container
+4. Authentication persists in the `dclaude-config` volume across container rebuilds
+
+**Benefits:**
+- No need to authenticate on host
+- Authentication persists across container recreations
+- Consistent with Claude API key persistence
+- Supports all `gh auth login` methods (browser, token, etc.)
+
+**Example workflow:**
+```bash
+# First time: Authenticate
+dclaude gh
+# Follow prompts to authenticate via browser or token
+
+# Use GitHub CLI in Claude sessions
+dclaude "create a new issue for the bug I just fixed"
+dclaude "list my open pull requests"
+
+# Or use directly
+dclaude exec gh pr list
+dclaude exec gh issue create
+```
+
+**Note:** Authentication is stored in the `dclaude-config` volume, not on your host system.
+
 ### How dclaude Works
 
 #### Host Emulation
@@ -320,7 +430,7 @@ DCLAUDE_NETWORK=auto dclaude  # default
 | Variable | Description | Default | Values |
 |----------|-------------|---------|--------|
 | `DCLAUDE_TAG` | Docker image tag to use | `latest` | Any valid tag |
-| `DCLAUDE_RM` | Remove container on exit | `true` | `true`, `false` |
+| `DCLAUDE_RM` | Remove container on exit | `false` | `true`, `false` |
 | `DCLAUDE_DEBUG` | Enable debug output | `false` | `true`, `false` |
 | `DCLAUDE_NO_UPDATE` | Skip image update check | `false` | `true`, `false` |
 | `DCLAUDE_DOCKER_SOCKET` | Docker socket path | `/var/run/docker.sock` | Valid socket path |

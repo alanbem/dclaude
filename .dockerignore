@@ -5,7 +5,6 @@
 # Documentation
 *.md
 LICENSE
-TASK.md
 CLAUDE.md
 
 # Docker files
@@ -30,7 +29,6 @@ npm-debug.log*
 .github/
 
 # Local testing
-bin/
 dclaude
 
 # Temporary files
