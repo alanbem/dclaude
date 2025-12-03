@@ -431,7 +431,8 @@ DCLAUDE_NETWORK=auto dclaude  # default
 |----------|-------------|---------|--------|
 | `DCLAUDE_TAG` | Docker image tag to use | `latest` | Any valid tag |
 | `DCLAUDE_RM` | Remove container on exit | `false` | `true`, `false` |
-| `DCLAUDE_DEBUG` | Enable debug output | `false` | `true`, `false` |
+| `DCLAUDE_DEBUG` | Enable debug output (cyan) | `false` | `true`, `false` |
+| `DCLAUDE_QUIET` | Suppress info/success messages | `false` | `true`, `false` |
 | `DCLAUDE_NO_UPDATE` | Skip image update check | `false` | `true`, `false` |
 | `DCLAUDE_DOCKER_SOCKET` | Docker socket path | `/var/run/docker.sock` | Valid socket path |
 | `DCLAUDE_NETWORK` | Network mode | `auto` | `auto`, `host`, `bridge` |
