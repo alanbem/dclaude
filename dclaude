@@ -933,6 +933,8 @@ main() {
     # No argument parsing - pass everything through to Claude
     # All arguments are preserved as-is for Claude
 
+    info "Verifying environment..."
+
     # Check prerequisites
     check_docker
     check_docker_running
