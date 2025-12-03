@@ -4,30 +4,24 @@
 
 set -euo pipefail
 
-# Load configuration file if exists (with validation)
-CONFIG_FILE="${HOME}/.dclaude/config"
-if [[ -f "$CONFIG_FILE" ]]; then
-    # Validate config file is readable and not world-writable
-    if [[ -r "$CONFIG_FILE" ]]; then
-        if [[ -w "$CONFIG_FILE" ]] && [[ "$(stat -c %a "$CONFIG_FILE" 2>/dev/null || stat -f %A "$CONFIG_FILE" 2>/dev/null)" =~ [2367]$ ]]; then
-            echo "Warning: Config file is world-writable, skipping for security" >&2
-        else
-            # shellcheck source=/dev/null
-            source "$CONFIG_FILE"
-        fi
-    fi
-fi
-
 # Configuration
 readonly IMAGE_NAME="${DCLAUDE_REGISTRY:-docker.io}/alanbem/dclaude"
 readonly IMAGE_TAG="${DCLAUDE_TAG:-latest}"
 readonly IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 readonly VOLUME_PREFIX="dclaude"
 readonly DEBUG="${DCLAUDE_DEBUG:-false}"
+readonly REMOVE_CONTAINER="${DCLAUDE_RM:-false}"
 # Docker socket will be detected dynamically unless overridden
 DOCKER_SOCKET="${DCLAUDE_DOCKER_SOCKET:-}"
 readonly MOUNT_CONFIGS="${DCLAUDE_MOUNT_CONFIGS:-false}"
 readonly SSH_MODE="${DCLAUDE_SSH:-auto}"  # auto, agent-forwarding, key-mount, none
+readonly ENABLE_SYSTEM_CONTEXT="${DCLAUDE_SYSTEM_CONTEXT:-true}"  # Inform Claude about dclaude environment
+
+# Chrome configuration (not readonly to allow --port flag override)
+CHROME_PROFILE="${DCLAUDE_CHROME_PROFILE:-claude}"
+CHROME_PORT="${DCLAUDE_CHROME_PORT:-9222}"
+CHROME_BIN="${DCLAUDE_CHROME_BIN:-}"
+CHROME_FLAGS="${DCLAUDE_CHROME_FLAGS:-}"
 
 # Colors for output (only if terminal supports it)
 if [[ -t 1 ]]; then
@@ -87,9 +81,31 @@ detect_platform() {
 
 # Detect Docker socket path based on platform
 detect_docker_socket() {
+    # Prefer Docker context (tells us the active socket)
+    if command -v docker &> /dev/null && command -v jq &> /dev/null; then
+        debug "Checking Docker context for socket path"
+        local context_output context_socket
+        context_output=$(docker context inspect 2>/dev/null || true)
+        if [[ -n "$context_output" ]]; then
+            context_socket=$(echo "$context_output" | jq -r '.[0].Endpoints.docker.Host' 2>/dev/null | sed 's|unix://||' 2>/dev/null) || true
+            if [[ -n "$context_socket" ]] && [[ -S "$context_socket" ]]; then
+                debug "Docker socket found via context: $context_socket"
+                echo "$context_socket"
+                return 0
+            else
+                debug "Context socket not valid: ${context_socket:-<empty>}"
+            fi
+        else
+            debug "No Docker context found"
+        fi
+    fi
+
+    # Fallback to common socket paths
+    debug "Falling back to filesystem search for Docker socket"
     local socket_paths=(
         "$HOME/.docker/run/docker.sock"      # macOS Docker Desktop
         "/var/run/docker.sock"                # Linux, Docker CE
+        "$HOME/.orbstack/run/docker.sock"    # OrbStack
         "$HOME/.colima/default/docker.sock"   # Colima
         "$HOME/.colima/docker.sock"           # Colima alternative
         "$HOME/.rd/docker.sock"               # Rancher Desktop
@@ -103,20 +119,6 @@ detect_docker_socket() {
             return 0
         fi
     done
-
-    # If no socket found, try to get from Docker context
-    if command -v docker &> /dev/null && command -v jq &> /dev/null; then
-        local context_output context_socket
-        context_output=$(docker context inspect 2>/dev/null || true)
-        if [[ -n "$context_output" ]]; then
-            context_socket=$(echo "$context_output" | jq -r '.[0].Endpoints.docker.Host' 2>/dev/null | sed 's|unix://||' 2>/dev/null) || true
-            if [[ -n "$context_socket" ]] && [[ -S "$context_socket" ]]; then
-                debug "Docker socket found via context: $context_socket"
-                echo "$context_socket"
-                return 0
-            fi
-        fi
-    fi
 
     debug "No Docker socket found"
     return 1
@@ -385,18 +387,20 @@ detect_network_capability() {
 
 # Create Docker volumes if they don't exist
 create_volumes() {
-    # Only create the essential .claude volume
-    local volume="${VOLUME_PREFIX}-claude"
+    # Create essential volumes for persistence
+    local volumes=("${VOLUME_PREFIX}-claude" "${VOLUME_PREFIX}-config")
 
-    if ! docker volume inspect "$volume" &> /dev/null; then
-        info "Creating volume: $volume"
-        if ! docker volume create "$volume" > /dev/null; then
-            error "Failed to create volume: $volume"
-            exit 1
+    for volume in "${volumes[@]}"; do
+        if ! docker volume inspect "$volume" &> /dev/null; then
+            info "Creating volume: $volume"
+            if ! docker volume create "$volume" > /dev/null; then
+                error "Failed to create volume: $volume"
+                exit 1
+            fi
+        else
+            debug "Volume exists: $volume"
         fi
-    else
-        debug "Volume exists: $volume"
-    fi
+    done
 }
 
 # Pull or update the Docker image
@@ -461,6 +465,188 @@ get_host_path() {
 
     debug "Host path: $host_path"
     echo "$host_path"
+}
+
+# Generate deterministic container name from path
+get_container_name() {
+    local path="${1:-$HOST_PATH}"
+    local path_hash
+    path_hash=$(echo -n "$path" | md5sum 2>/dev/null | cut -d' ' -f1 || echo -n "$path" | md5 | cut -d' ' -f1)
+    echo "dclaude-${path_hash:0:12}"
+}
+
+# Generate system context prompt for Claude
+generate_system_context() {
+    local network_mode="${1:-auto}"
+    local ssh_mode="${2:-auto}"
+    local has_docker="${3:-false}"
+    local platform="${4:-unknown}"
+    local docker_socket="${5:-}"
+
+    cat <<'EOF'
+
+# dclaude Environment Context
+
+You are running inside **dclaude** - a Docker container that emulates the host environment. This is important context for understanding your capabilities and limitations:
+
+## Container Architecture
+- **Host Emulation**: Your current working directory is mounted at the exact same path as on the host
+- **Path Mirroring**: All file paths work identically to native execution (e.g., `/Users/alice/project` in container = same path on host)
+- **Isolated Environment**: While you operate in a container, file operations affect the real host filesystem through volume mounts
+
+## Host Environment
+EOF
+
+    # Platform info
+    case "$platform" in
+        darwin)
+            echo "- **Host OS**: macOS"
+            ;;
+        linux)
+            echo "- **Host OS**: Linux"
+            ;;
+        windows)
+            echo "- **Host OS**: Windows"
+            ;;
+        *)
+            echo "- **Host OS**: Unknown"
+            ;;
+    esac
+
+    # Architecture
+    local arch=$(uname -m 2>/dev/null || echo "unknown")
+    case "$arch" in
+        arm64|aarch64)
+            echo "- **Architecture**: ARM64 (Apple Silicon / ARM)"
+            ;;
+        x86_64|amd64)
+            echo "- **Architecture**: x86_64 (Intel/AMD)"
+            ;;
+        *)
+            echo "- **Architecture**: $arch"
+            ;;
+    esac
+
+    # Docker provider detection from socket path
+    if [[ -n "$docker_socket" ]]; then
+        case "$docker_socket" in
+            */.orbstack/*)
+                echo "- **Docker Provider**: OrbStack (high performance, native macOS integration)"
+                ;;
+            */.docker/run/*)
+                echo "- **Docker Provider**: Docker Desktop"
+                ;;
+            */.colima/*)
+                echo "- **Docker Provider**: Colima"
+                ;;
+            */.rd/*)
+                echo "- **Docker Provider**: Rancher Desktop"
+                ;;
+            /var/run/docker.sock)
+                echo "- **Docker Provider**: Docker Engine (native Linux)"
+                ;;
+            *)
+                echo "- **Docker Provider**: Custom Docker setup"
+                ;;
+        esac
+    fi
+
+    cat <<'EOF'
+
+## Available Capabilities
+EOF
+
+    # Docker access
+    if [[ "$has_docker" == "true" ]]; then
+        cat <<'EOF'
+- **Docker Access**: You have access to the host's Docker daemon via mounted socket
+  - Can build, run, and manage Docker containers
+  - Can execute docker and docker-compose commands
+  - All Docker operations affect the host Docker daemon
+EOF
+    fi
+
+    # Network mode
+    case "$network_mode" in
+        host)
+            cat <<'EOF'
+- **Networking**: Host networking mode enabled
+  - Direct access to `localhost:PORT` services on the host
+  - Can communicate with other containers via localhost
+  - Full network stack sharing with host
+EOF
+            ;;
+        bridge)
+            cat <<'EOF'
+- **Networking**: Bridge networking mode (isolated network)
+  - Cannot directly access `localhost` services
+  - Use `host.docker.internal:PORT` to access host services
+  - Container has isolated network namespace
+EOF
+            ;;
+    esac
+
+    # SSH authentication
+    case "$ssh_mode" in
+        agent-forwarding)
+            cat <<'EOF'
+- **SSH Authentication**: Agent forwarding enabled
+  - SSH keys available via forwarded agent (secure, keys never in container)
+  - Can authenticate to GitHub, GitLab, and other SSH services
+  - Private keys remain on host machine only
+  - **Important**: Keys must be loaded in host's SSH agent (`ssh-add -l` to verify)
+  - On macOS: Proxy container (`dclaude-ssh-proxy-*`) bridges permissions automatically
+  - If git fails with auth errors, user needs to run `ssh-add ~/.ssh/id_ed25519` on host
+  - Socket location in container: $SSH_AUTH_SOCK (typically /tmp/ssh-proxy/agent)
+  - Known hosts pre-configured for: GitHub, GitLab, Bitbucket
+EOF
+            ;;
+        key-mount)
+            cat <<'EOF'
+- **SSH Authentication**: SSH keys mounted (read-only)
+  - Host's ~/.ssh directory mounted into container at /home/claude/.ssh
+  - Can authenticate to GitHub, GitLab, and other SSH services
+  - Keys are read-only, cannot be modified
+  - SSH agent not required - keys read directly from filesystem
+  - Use ssh-add inside container if agent needed
+  - Note: Uses host's known_hosts file (not container's pre-configured one)
+EOF
+            ;;
+        none)
+            cat <<'EOF'
+- **SSH Authentication**: Not configured
+  - SSH keys not available in container
+  - Cannot authenticate to remote Git repositories via SSH
+  - Recommend using HTTPS authentication for Git operations
+  - Or restart with DCLAUDE_SSH=agent-forwarding or DCLAUDE_SSH=key-mount
+EOF
+            ;;
+    esac
+
+    cat <<'EOF'
+
+## Development Tools Available
+- **Languages**: Node.js 20+, Python 3
+- **Package Managers**: npm, pip, Homebrew/Linuxbrew
+- **Tools**: git, gh (GitHub CLI), docker, docker-compose, curl, tmux, nano
+- **Shell**: bash (your commands execute in bash shell)
+
+## Git Configuration Requirements
+**IMPORTANT**: Before performing any git operations (commit, push, etc.), you MUST:
+1. Check if git is configured: `git config user.name` and `git config user.email`
+2. If either is missing/empty, ASK the user for their git name and email
+3. Configure git with: `git config --global user.name "User Name"` and `git config --global user.email "user@example.com"`
+4. Never assume or make up git credentials - always ask the user first
+
+## Important Notes
+- File operations are performed on the host filesystem (not isolated)
+- Changes persist after container exits (files are on host)
+- System packages can be installed with apt-get, Homebrew, or npm
+- Use relative paths when possible - absolute paths work due to path mirroring
+- Git operations work normally - repository sees correct paths
+
+When suggesting commands or file operations, you can treat this environment as if running natively on the host, with the benefits of containerization for tool isolation.
+EOF
 }
 
 # Handle SSH authentication based on DCLAUDE_SSH mode
@@ -553,19 +739,23 @@ handle_ssh_auth() {
 
             # Platform-specific socket mounting
             local platform=$(detect_platform)
+            debug "Setting up SSH agent forwarding for platform: $platform"
             case "$platform" in
                 linux)
+                    debug "Using direct socket mount: ${SSH_AUTH_SOCK}"
                     docker_args+=(-v "${SSH_AUTH_SOCK}:/tmp/ssh-agent" -e "SSH_AUTH_SOCK=/tmp/ssh-agent")
                     info "SSH agent forwarding enabled (Linux)"
                     ;;
                 darwin)
                     # On macOS, we need to set up a proxy container first
+                    debug "Setting up SSH proxy container for macOS"
                     setup_ssh_proxy_container
 
                     # Now mount the proxied socket from the shared volume
                     docker_args+=(-v "dclaude-ssh-proxy:/tmp/ssh-proxy:ro"
                                  -e "SSH_AUTH_SOCK=/tmp/ssh-proxy/agent")
                     info "SSH agent forwarding enabled via proxy container"
+                    debug "Mounted SSH proxy volume: dclaude-ssh-proxy:/tmp/ssh-proxy"
                     ;;
                 windows)
                     warning "SSH agent forwarding not fully supported on Windows"
@@ -698,6 +888,30 @@ mount_host_configs() {
     fi
 }
 
+# Detect TTY availability and return appropriate Docker flags
+detect_tty_flags() {
+    local tty_flags=""
+
+    # Check if stdin is a TTY
+    if [[ -t 0 ]]; then
+        tty_flags="-i"
+    fi
+
+    # Check if stdout is a TTY
+    if [[ -t 1 ]]; then
+        tty_flags="${tty_flags} -t"
+    fi
+
+    # Trim whitespace
+    tty_flags=$(echo $tty_flags | xargs)
+
+    if [[ "$DEBUG" == "true" ]]; then
+        debug "TTY detection: stdin=$(test -t 0 && echo yes || echo no), stdout=$(test -t 1 && echo yes || echo no)"
+        debug "TTY flags: ${tty_flags:-none}"
+    fi
+
+    echo "$tty_flags"
+}
 
 # Main execution
 main() {
@@ -711,9 +925,6 @@ main() {
     # Setup environment
     create_volumes
     update_image
-
-    # Get current directory for mounting
-    HOST_PATH=$(get_host_path)
 
     # Platform-specific settings
     local platform
@@ -783,51 +994,158 @@ main() {
     fi
 
     # Detect TTY availability
-    local tty_flags=""
-    if [[ -t 0 ]]; then
-        # stdin is a TTY
-        tty_flags="-i"
+    local tty_flags=$(detect_tty_flags)
+
+    # Detect Docker socket early (needed for system context generation)
+    if [[ -z "$DOCKER_SOCKET" ]]; then
+        DOCKER_SOCKET=$(detect_docker_socket) || true
     fi
-    if [[ -t 1 ]]; then
-        # stdout is a TTY
-        tty_flags="${tty_flags} -t"
+    debug "Docker socket detection: ${DOCKER_SOCKET:-<not found>}"
+
+    # Resolve SSH mode from 'auto' to actual mode (needed for system context)
+    local resolved_ssh_mode="$SSH_MODE"
+    if [[ "$SSH_MODE" == "auto" ]]; then
+        # Same auto-detection logic as handle_ssh_auth()
+        if [[ "$MOUNT_CONFIGS" == "true" ]] && [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
+            resolved_ssh_mode="key-mount"
+            debug "SSH mode resolved: key-mount (DCLAUDE_MOUNT_CONFIGS=true)"
+        elif [[ -n "${SSH_AUTH_SOCK:-}" ]] && [[ -S "${SSH_AUTH_SOCK}" ]]; then
+            resolved_ssh_mode="agent-forwarding"
+            debug "SSH mode resolved: agent-forwarding (active agent detected)"
+        elif [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
+            resolved_ssh_mode="key-mount"
+            debug "SSH mode resolved: key-mount (SSH directory detected)"
+        else
+            resolved_ssh_mode="none"
+            debug "SSH mode resolved: none (no SSH agent or keys found)"
+        fi
+    else
+        debug "SSH mode: $resolved_ssh_mode (user-specified)"
     fi
 
-    # If we have TTY flags, trim whitespace
-    tty_flags=$(echo $tty_flags | xargs)
+    # Generate system context for Claude (if enabled) - must be done early for all code paths
+    local claude_args=()
+    if [[ "$ENABLE_SYSTEM_CONTEXT" == "true" ]]; then
+        local has_docker="false"
+        [[ -n "$DOCKER_SOCKET" ]] && [[ -S "$DOCKER_SOCKET" ]] && has_docker="true"
 
-    debug "TTY detection: stdin=$(test -t 0 && echo yes || echo no), stdout=$(test -t 1 && echo yes || echo no)"
-    debug "TTY flags: ${tty_flags:-none}"
+        local system_context
+        system_context=$(generate_system_context "$network_mode" "$resolved_ssh_mode" "$has_docker" "$platform" "$DOCKER_SOCKET")
+
+        claude_args+=("--append-system-prompt" "$system_context")
+        debug "System context enabled (${#system_context} chars, has_docker=$has_docker, ssh=$resolved_ssh_mode, platform=$platform)"
+        if [[ "$DEBUG" == "true" ]]; then
+            debug "System context preview: ${system_context:0:100}..."
+        fi
+    else
+        debug "System context disabled (DCLAUDE_SYSTEM_CONTEXT=$ENABLE_SYSTEM_CONTEXT)"
+    fi
+
+    # Generate container name based on path (for reuse when DCLAUDE_RM=false)
+    local container_name=""
+    if [[ "$REMOVE_CONTAINER" == "false" ]]; then
+        # Create deterministic name from path hash
+        container_name=$(get_container_name "$HOST_PATH")
+        debug "Container name: $container_name (path: $HOST_PATH)"
+
+        # Check if container already exists
+        if docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+            local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+            debug "Found existing container: $container_name (status: $container_status)"
+
+            if [[ "$container_status" == "running" ]]; then
+                info "Attaching to running container: $container_name"
+            elif [[ "$container_status" == "exited" ]]; then
+                info "Restarting existing container: $container_name"
+                docker start "$container_name" >/dev/null
+
+                # Wait for container to be running
+                local wait_count=0
+                while [[ $wait_count -lt 30 ]]; do
+                    if docker ps -q -f name="^${container_name}$" 2>/dev/null | grep -q .; then
+                        debug "Container restarted successfully"
+                        break
+                    fi
+                    sleep 0.1
+                    ((wait_count++))
+                done
+            fi
+
+            # Always use tmux for persistent containers (provides session management)
+            # Generate tmux session name
+            local tmux_session
+            if [[ -n "${DCLAUDE_TMUX_SESSION:-}" ]]; then
+                # Use custom session name if provided
+                tmux_session="$DCLAUDE_TMUX_SESSION"
+                debug "Using custom tmux session name: $tmux_session"
+            else
+                # Generate unique session name with timestamp
+                tmux_session="claude-$(date +%Y%m%d-%H%M%S)"
+                debug "Generated unique tmux session name: $tmux_session"
+            fi
+
+            # Build env args for docker exec to pass terminal info to tmux session
+            local exec_env_args=()
+            [[ -n "${TERM_PROGRAM:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM=${TERM_PROGRAM}")
+            [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
+            [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
+            [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
+
+            # Always create a new tmux session (never reattach)
+            debug "Creating new tmux session running Claude"
+            debug "Claude args count: ${#claude_args[@]}, user args: $*"
+            info "Starting new Claude session..."
+            exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
+        fi
+    fi
 
     # Prepare Docker run arguments
     DOCKER_ARGS=(
         "run"
-        "--rm"
     )
 
-    # Add TTY flags if available
-    if [[ -n "$tty_flags" ]]; then
-        DOCKER_ARGS+=($tty_flags)
+    # Add --rm flag if enabled (default: true)
+    if [[ "$REMOVE_CONTAINER" == "true" ]]; then
+        DOCKER_ARGS+=("--rm")
+    else
+        # Use named container for reuse
+        DOCKER_ARGS+=("--name" "$container_name")
     fi
+
+    # TTY flags will be added only when needed (ephemeral containers)
+    # Persistent containers run in background and shouldn't have TTY/stdin attached
+
 
     DOCKER_ARGS+=(
         # Mount current directory
         -v "${HOST_PATH}:${HOST_PATH}"
         # Mount persistent Claude configuration volume
         -v "${VOLUME_PREFIX}-claude:/home/claude/.claude"
+        # Mount persistent config volume (gh, etc.)
+        -v "${VOLUME_PREFIX}-config:/home/claude/.config"
         # Set working directory
         -w "${HOST_PATH}"
         # Network mode
         --network="$network_mode"
-        # Environment
+        # Environment - pass through terminal identification for proper feature detection
         -e "TERM=${TERM:-xterm-256color}"
     )
 
-    # Detect and mount Docker socket if it exists
-    if [[ -z "$DOCKER_SOCKET" ]]; then
-        DOCKER_SOCKET=$(detect_docker_socket) || true
+    # Pass through terminal program information for proper logo rendering
+    if [[ -n "${TERM_PROGRAM:-}" ]]; then
+        DOCKER_ARGS+=(-e "TERM_PROGRAM=${TERM_PROGRAM}")
+    fi
+    if [[ -n "${TERM_PROGRAM_VERSION:-}" ]]; then
+        DOCKER_ARGS+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
+    fi
+    if [[ -n "${TERM_SESSION_ID:-}" ]]; then
+        DOCKER_ARGS+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
+    fi
+    if [[ -n "${COLORTERM:-}" ]]; then
+        DOCKER_ARGS+=(-e "COLORTERM=${COLORTERM}")
     fi
 
+    # Mount Docker socket if detected (detection done earlier for system context)
     if [[ -n "$DOCKER_SOCKET" ]] && [[ -S "$DOCKER_SOCKET" ]]; then
         DOCKER_ARGS+=(-v "${DOCKER_SOCKET}:/var/run/docker.sock")
         debug "Docker socket mounted: $DOCKER_SOCKET"
@@ -855,20 +1173,446 @@ main() {
     fi
 
     if [[ "$DEBUG" == "true" ]]; then
+        debug "Container removal: $REMOVE_CONTAINER (DCLAUDE_RM=${DCLAUDE_RM:-<not set>})"
         debug "Docker command: docker ${DOCKER_ARGS[*]} $IMAGE $*"
     fi
 
     # Run Claude in Docker
-    exec docker "${DOCKER_ARGS[@]}" "$IMAGE" "$@"
+    if [[ "$REMOVE_CONTAINER" == "false" ]]; then
+        # For persistent containers, run tini with tail daemon for zombie reaping
+        # tini will reap zombie processes created by exec commands
+        debug "Starting persistent container with tini + tail daemon"
+        
+        # Run in detached mode (-d) and capture output (Container ID) or errors
+        local run_output
+        if ! run_output=$(docker "${DOCKER_ARGS[@]}" -d --entrypoint /usr/bin/tini "$IMAGE" -- tail -f /dev/null 2>&1); then
+            error "Failed to start container: $run_output"
+            exit 1
+        fi
+        
+        debug "Container started successfully: $run_output"
+
+        # Run entrypoint setup as root (for Docker socket permissions, etc.)
+        debug "Running entrypoint initialization"
+        docker exec -u root "$container_name" /usr/local/bin/docker-entrypoint.sh true >/dev/null 2>&1 || true
+
+        # Always use tmux for persistent containers (provides session management)
+        # Generate tmux session name
+        local tmux_session
+        if [[ -n "${DCLAUDE_TMUX_SESSION:-}" ]]; then
+            # Use custom session name if provided
+            tmux_session="$DCLAUDE_TMUX_SESSION"
+            debug "Using custom tmux session name: $tmux_session"
+        else
+            # Generate unique session name with timestamp
+            tmux_session="claude-$(date +%Y%m%d-%H%M%S)"
+            debug "Generated unique tmux session name: $tmux_session"
+        fi
+
+        # Build env args for docker exec to pass terminal info to tmux session
+        local exec_env_args=()
+        [[ -n "${TERM_PROGRAM:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM=${TERM_PROGRAM}")
+        [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
+        [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
+        [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
+
+        # Always create a new tmux session (never reattach)
+        debug "Creating new tmux session running Claude"
+        debug "Claude args count: ${#claude_args[@]}, user args: $*"
+        info "Starting new Claude session..."
+        exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
+    else
+        # Ephemeral container - run directly
+        # Add TTY flags here as we are running interactively
+        if [[ -n "$tty_flags" ]]; then
+            DOCKER_ARGS+=($tty_flags)
+        fi
+        debug "Claude args count: ${#claude_args[@]}, user args: $*"
+        exec docker "${DOCKER_ARGS[@]}" "$IMAGE" "${claude_args[@]}" "$@"
+    fi
 }
 
-# Cleanup function
-cleanup() {
-    debug "Cleaning up..."
+
+
+# Subcommand: exec into container
+cmd_exec() {
+    # Generate container name from path hash (same logic as main)
+    local container_name=$(get_container_name "$HOST_PATH")
+
+
+    debug "Looking for container: $container_name (path: $HOST_PATH)"
+
+    # Check if container exists
+    if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        error "No container found for this directory"
+        info "Run 'DCLAUDE_RM=false dclaude' first to create a persistent container"
+        exit 1
+    fi
+
+    local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+    debug "Container status: $container_status"
+
+    if [[ "$container_status" != "running" ]]; then
+        if [[ "$container_status" == "exited" ]]; then
+            info "Restarting existing container: $container_name"
+            docker start "$container_name" >/dev/null
+            debug "Container restarted successfully"
+        else
+            error "Container $container_name is in unexpected state: $container_status"
+            info "Remove it with: docker rm $container_name"
+            exit 1
+        fi
+    fi
+
+    # Detect TTY availability
+    local tty_flags=$(detect_tty_flags)
+
+    # Exec into container as claude user
+    if [[ $# -eq 0 ]]; then
+        # No command specified, open bash shell
+        info "Opening shell in container: $container_name"
+        debug "Exec command: docker exec $tty_flags -u claude -w $HOST_PATH $container_name bash"
+        exec docker exec $tty_flags -u claude -w "$HOST_PATH" "$container_name" bash
+    else
+        # Execute specific command
+        info "Executing command in container: $container_name"
+        debug "Exec command: docker exec $tty_flags -u claude -w $HOST_PATH $container_name $*"
+        exec docker exec $tty_flags -u claude -w "$HOST_PATH" "$container_name" "$@"
+    fi
 }
+
+# Subcommand: authenticate GitHub CLI
+cmd_gh() {
+    # Generate container name based on current directory
+    local container_name=$(get_container_name "$HOST_PATH")
+
+    # Check if container exists
+    if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        error "No container found for this directory"
+        info "Run 'dclaude' first to create a container"
+        exit 1
+    fi
+
+    # Check if container is running
+    local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+    if [[ "$container_status" != "running" ]]; then
+        if [[ "$container_status" == "exited" ]]; then
+            info "Restarting container: $container_name"
+            docker start "$container_name" >/dev/null
+        else
+            error "Container $container_name is in unexpected state: $container_status"
+            exit 1
+        fi
+    fi
+
+    info "Starting GitHub CLI authentication..."
+    exec docker exec -it -u claude "$container_name" gh auth login
+}
+
+# Subcommand: attach to existing tmux session
+cmd_attach() {
+    local session_name="${1:-${DCLAUDE_TMUX_SESSION:-}}"
+
+    if [[ -z "$session_name" ]]; then
+        error "No session name provided"
+        info "Usage: dclaude attach <session-name>"
+        info "   or: DCLAUDE_TMUX_SESSION=<name> dclaude attach"
+        exit 1
+    fi
+
+    # Generate container name based on current directory
+    local container_name=$(get_container_name "$HOST_PATH")
+
+
+    # Check if container exists
+    if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        error "No container found for this directory"
+        info "Run 'dclaude' first to create a container"
+        exit 1
+    fi
+
+    # Check if container is running
+    local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+    if [[ "$container_status" != "running" ]]; then
+        if [[ "$container_status" == "exited" ]]; then
+            info "Restarting container: $container_name"
+            docker start "$container_name" >/dev/null
+        else
+            error "Container $container_name is in unexpected state: $container_status"
+            exit 1
+        fi
+    fi
+
+    # Check if session exists
+    if ! docker exec -u claude "$container_name" tmux has-session -t "$session_name" 2>/dev/null; then
+        error "Session '$session_name' not found in container"
+        info "Available sessions:"
+        docker exec -u claude "$container_name" tmux list-sessions 2>/dev/null || echo "  (no sessions running)"
+        exit 1
+    fi
+
+    # Build env args for docker exec
+    local exec_env_args=()
+    [[ -n "${TERM_PROGRAM:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM=${TERM_PROGRAM}")
+    [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
+    [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
+    [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
+
+    # Attach to existing session
+    info "Attaching to session: $session_name"
+    exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf attach-session -t "$session_name"
+}
+
+# Subcommand: launch Chrome with DevTools and ensure MCP configured
+cmd_chrome() {
+    local setup_only=false
+
+    # Parse flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --setup-only)
+                setup_only=true
+                shift
+                ;;
+            --port=*)
+                CHROME_PORT="${1#*=}"
+                shift
+                ;;
+            *)
+                error "Unknown option: $1"
+                info "Usage: dclaude chrome [--setup-only] [--port=PORT]"
+                exit 1
+                ;;
+        esac
+    done
+
+    info "Setting up Chrome DevTools integration"
+
+    # 1. Detect Chrome binary
+    local chrome_bin="$CHROME_BIN"
+    if [[ -z "$chrome_bin" ]]; then
+        debug "Auto-detecting Chrome binary"
+        if [[ "$(uname)" == "Darwin" ]]; then
+            # macOS
+            if [[ -f "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]]; then
+                chrome_bin="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+            elif [[ -f "/Applications/Chromium.app/Contents/MacOS/Chromium" ]]; then
+                chrome_bin="/Applications/Chromium.app/Contents/MacOS/Chromium"
+            fi
+        elif [[ "$(uname)" == "Linux" ]]; then
+            # Linux
+            chrome_bin=$(command -v google-chrome || command -v chromium-browser || command -v chromium || echo "")
+        fi
+
+        if [[ -z "$chrome_bin" ]]; then
+            error "Chrome not found. Set DCLAUDE_CHROME_BIN to specify location"
+            exit 1
+        fi
+        debug "Found Chrome: $chrome_bin"
+    fi
+
+    # 2. Setup profile directory
+    local profile_dir="$HOST_PATH/.dclaude/chrome/profiles/$CHROME_PROFILE"
+    mkdir -p "$profile_dir"
+    debug "Profile directory: $profile_dir"
+
+    # 3. Check/create .mcp.json
+    local mcp_json="$HOST_PATH/.mcp.json"
+    local mcp_port=""
+    local port_mismatch=false
+
+    if [[ -f "$mcp_json" ]]; then
+        debug "Found existing .mcp.json"
+        # Extract port from --browserUrl in .mcp.json
+        mcp_port=$(jq -r '.mcpServers.chrome.args[]? | select(startswith("--browserUrl=")) | split(":")[-1]' "$mcp_json" 2>/dev/null || echo "")
+
+        if [[ -n "$mcp_port" && "$mcp_port" != "$CHROME_PORT" ]]; then
+            port_mismatch=true
+        fi
+    else
+        debug "Creating .mcp.json"
+        cat > "$mcp_json" << EOF
+{
+  "mcpServers": {
+    "chrome": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--browserUrl=http://localhost:${CHROME_PORT}"
+      ]
+    }
+  }
+}
+EOF
+        success "Created .mcp.json with Chrome MCP server (port ${CHROME_PORT})"
+    fi
+
+    # 4. Warn if port mismatch
+    if [[ "$port_mismatch" == "true" ]]; then
+        warning "Port mismatch detected!"
+        echo ""
+        echo "  Chrome will launch on port:    ${CHROME_PORT}"
+        echo "  MCP expects (.mcp.json):       ${mcp_port}"
+        echo ""
+        warning "MCP will not be able to connect until .mcp.json is updated"
+        echo ""
+    fi
+
+    # 5. Exit if setup-only
+    if [[ "$setup_only" == "true" ]]; then
+        success "Setup complete (--setup-only mode)"
+        exit 0
+    fi
+
+    # 6. Check if Chrome already running on this port
+    if curl -s "http://localhost:${CHROME_PORT}/json/version" >/dev/null 2>&1; then
+        success "Chrome already running on port ${CHROME_PORT}"
+        curl -s "http://localhost:${CHROME_PORT}/json/version" | jq -r '"  Browser: " + .Browser'
+        exit 0
+    fi
+
+    # 7. Launch Chrome
+    info "Launching Chrome with remote debugging on port ${CHROME_PORT}"
+
+    local chrome_args=(
+        "--user-data-dir=$profile_dir"
+        "--remote-debugging-port=$CHROME_PORT"
+        "--no-first-run"
+        "--no-default-browser-check"
+        "--disable-default-apps"
+        "--disable-sync"
+        "--allow-insecure-localhost"
+    )
+
+    # Add user-specified flags
+    if [[ -n "$CHROME_FLAGS" ]]; then
+        debug "Adding custom flags: $CHROME_FLAGS"
+        read -ra custom_flags <<< "$CHROME_FLAGS"
+        chrome_args+=("${custom_flags[@]}")
+    fi
+
+    debug "Chrome command: $chrome_bin ${chrome_args[*]}"
+
+    # Launch Chrome in background
+    "$chrome_bin" "${chrome_args[@]}" >/dev/null 2>&1 &
+    local chrome_pid=$!
+
+    # 8. Wait for Chrome to be ready
+    info "Waiting for Chrome to start..."
+    local wait_count=0
+    while [[ $wait_count -lt 30 ]]; do
+        if curl -s "http://localhost:${CHROME_PORT}/json/version" >/dev/null 2>&1; then
+            success "Chrome is ready on port ${CHROME_PORT}"
+            curl -s "http://localhost:${CHROME_PORT}/json/version" | jq -r '"  Browser: " + .Browser + "\n  Protocol: " + ."Protocol-Version" + "\n  WebSocket: " + .webSocketDebuggerUrl'
+            echo ""
+            success "Chrome DevTools ready for MCP integration!"
+            info "Next step: Run 'dclaude' to start Claude with Chrome MCP"
+            exit 0
+        fi
+        sleep 0.5
+        ((wait_count++))
+    done
+
+    error "Chrome failed to start or remote debugging port not accessible"
+    exit 1
+}
+
+# Initialize HOST_PATH once for all commands
+HOST_PATH=$(get_host_path)
+
+# Handle subcommands
+if [[ $# -gt 0 ]]; then
+    case "$1" in
+        new)
+            # Explicit "new" command - shift and pass remaining args to main
+            shift
+            # Fall through to main function
+            ;;
+        attach)
+            shift
+            cmd_attach "$@"
+            ;;
+        exec|shell|bash)
+            shift
+            cmd_exec "$@"
+            ;;
+        chrome)
+            shift
+            cmd_chrome "$@"
+            ;;
+        gh)
+            shift
+            cmd_gh "$@"
+            ;;
+        --help|-h|help)
+            cat << 'EOF'
+dclaude - Dockerized Claude Code Launcher
+
+Usage:
+  dclaude [options]           Start new Claude session (default)
+  dclaude new [options]       Start new Claude session (explicit)
+  dclaude attach <session>    Attach to existing tmux session
+  dclaude chrome [options]    Launch Chrome with DevTools and MCP integration
+  dclaude gh                  Authenticate GitHub CLI (runs gh auth login)
+  dclaude exec [command]      Execute command in container (default: bash)
+  dclaude shell              Open bash shell in container
+  dclaude --help             Show this help
+
+Environment Variables:
+  DCLAUDE_TAG                Docker image tag (default: latest)
+  DCLAUDE_RM                 Remove container on exit (default: false)
+  DCLAUDE_DEBUG              Enable debug output (default: false)
+  DCLAUDE_MOUNT_CONFIGS      Mount host configs (default: false)
+  DCLAUDE_SSH                SSH mode: auto, agent-forwarding, key-mount, none
+  DCLAUDE_NETWORK            Network mode: auto, host, bridge
+  DCLAUDE_DOCKER_SOCKET      Override Docker socket path
+  DCLAUDE_TMUX_SESSION       Custom tmux session name (default: claude-TIMESTAMP)
+  DCLAUDE_CHROME_BIN         Chrome executable path (auto-detected if not set)
+  DCLAUDE_CHROME_PROFILE     Chrome profile name (default: claude)
+  DCLAUDE_CHROME_PORT        Chrome debugging port (default: 9222)
+  DCLAUDE_CHROME_FLAGS       Additional Chrome flags (default: empty)
+
+Examples:
+  # Start new Claude session (auto-generated session name)
+  dclaude
+  dclaude new
+
+  # Start with custom session name (role-based workflows)
+  DCLAUDE_TMUX_SESSION=claude-architect dclaude
+  dclaude new --dangerously-skip-permissions
+
+  # Attach to existing named session
+  dclaude attach claude-architect
+  DCLAUDE_TMUX_SESSION=claude-architect dclaude attach
+
+  # Start with ephemeral container (removed on exit)
+  DCLAUDE_RM=true dclaude
+
+  # Launch Chrome with DevTools for MCP integration
+  dclaude chrome
+  dclaude chrome --port=9223                    # Custom debugging port
+  dclaude chrome --setup-only                   # Just create .mcp.json, don't launch
+  DCLAUDE_CHROME_PROFILE=testing dclaude chrome # Use different profile
+
+  # Authenticate GitHub CLI (persists in dclaude-config volume)
+  dclaude gh
+
+  # Open bash shell in running container
+  dclaude exec
+
+  # Run command in container
+  dclaude exec npm install
+
+For more information: https://github.com/alanbem/dclaude
+EOF
+            exit 0
+            ;;
+    esac
+fi
 
 # Handle signals
-trap cleanup EXIT
+
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
