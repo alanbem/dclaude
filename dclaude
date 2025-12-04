@@ -1565,6 +1565,38 @@ cmd_pull() {
     fi
 }
 
+# Subcommand: update Claude CLI inside container
+cmd_update() {
+    local container_name=$(get_container_name "$HOST_PATH")
+
+    # Check if container exists
+    if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        error "No container found for this directory"
+        info "Run 'dclaude' first to create a persistent container"
+        exit 1
+    fi
+
+    local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+
+    if [[ "$container_status" != "running" ]]; then
+        error "Container is not running"
+        info "Start it with 'dclaude' first"
+        exit 1
+    fi
+
+    info "Updating Claude CLI..."
+    if docker exec -u claude "$container_name" npm update -g @anthropic-ai/claude-code; then
+        success "Claude CLI updated"
+        # Show new version
+        local new_version=$(docker exec -u claude "$container_name" claude --version 2>/dev/null | head -1)
+        info "Version: $new_version"
+    else
+        error "Failed to update Claude CLI"
+        exit 1
+    fi
+    exit 0
+}
+
 # Subcommand: stop container for current directory
 cmd_stop() {
     local container_name=$(get_container_name "$HOST_PATH")
@@ -1698,6 +1730,10 @@ if [[ $# -gt 0 ]]; then
             shift
             cmd_pull "$@"
             ;;
+        update)
+            shift
+            cmd_update "$@"
+            ;;
         stop)
             shift
             cmd_stop "$@"
@@ -1715,6 +1751,7 @@ Usage:
   dclaude new [options]       Start new Claude session (explicit)
   dclaude attach <session>    Attach to existing tmux session
   dclaude pull                Pull latest Docker image
+  dclaude update              Update Claude CLI inside container
   dclaude stop                Stop container for current directory
   dclaude rm [-f]             Remove container for current directory
   dclaude chrome [options]    Launch Chrome with DevTools and MCP integration
@@ -1755,6 +1792,7 @@ Examples:
 
   # Update image and restart container
   dclaude pull                                   # Pull latest image
+  dclaude update                                 # Update Claude CLI in container
   dclaude stop                                   # Stop container (preserves it)
   dclaude rm                                     # Remove stopped container
   dclaude rm -f                                  # Force remove running container
