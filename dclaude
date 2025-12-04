@@ -927,6 +927,17 @@ detect_tty_flags() {
     echo "$tty_flags"
 }
 
+# Check if Claude is being run in print mode (-p/--print)
+# This checks arguments as separate array elements, so -p inside a string won't match
+is_print_mode() {
+    for arg in "$@"; do
+        if [[ "$arg" == "-p" ]] || [[ "$arg" == "--print" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Main execution
 main() {
     # No argument parsing - pass everything through to Claude
@@ -1088,9 +1099,9 @@ main() {
                 done
             fi
 
-            # Check if interactive (TTY available)
-            if [[ -n "$tty_flags" ]]; then
-                # Interactive - use tmux for session management
+            # Check if interactive (TTY available) and not in print mode
+            if [[ -n "$tty_flags" ]] && ! is_print_mode "${claude_args[@]}" "$@"; then
+                # Interactive and not print mode - use tmux for session management
                 local tmux_session
                 if [[ -n "${DCLAUDE_TMUX_SESSION:-}" ]]; then
                     tmux_session="$DCLAUDE_TMUX_SESSION"
@@ -1112,8 +1123,8 @@ main() {
                 info "Starting new Claude session..."
                 exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
             else
-                # Non-interactive - run claude directly without tmux
-                debug "Non-interactive mode, running Claude directly (no tmux)"
+                # Non-interactive or print mode - run claude directly without tmux
+                debug "Non-interactive or print mode, running Claude directly (no tmux)"
                 debug "Claude args count: ${#claude_args[@]}, user args: $*"
                 exec docker exec -u claude -w "$HOST_PATH" "$container_name" claude "${claude_args[@]}" "$@"
             fi
@@ -1217,9 +1228,9 @@ main() {
         debug "Running entrypoint initialization"
         docker exec -u root "$container_name" /usr/local/bin/docker-entrypoint.sh true >/dev/null 2>&1 || true
 
-        # Check if interactive (TTY available)
-        if [[ -n "$tty_flags" ]]; then
-            # Interactive - use tmux for session management
+        # Check if interactive (TTY available) and not in print mode
+        if [[ -n "$tty_flags" ]] && ! is_print_mode "${claude_args[@]}" "$@"; then
+            # Interactive and not print mode - use tmux for session management
             local tmux_session
             if [[ -n "${DCLAUDE_TMUX_SESSION:-}" ]]; then
                 tmux_session="$DCLAUDE_TMUX_SESSION"
@@ -1241,8 +1252,8 @@ main() {
             info "Starting new Claude session..."
             exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
         else
-            # Non-interactive - run claude directly without tmux
-            debug "Non-interactive mode, running Claude directly (no tmux)"
+            # Non-interactive or print mode - run claude directly without tmux
+            debug "Non-interactive or print mode, running Claude directly (no tmux)"
             debug "Claude args count: ${#claude_args[@]}, user args: $*"
             exec docker exec -u claude -w "$HOST_PATH" "$container_name" claude "${claude_args[@]}" "$@"
         fi

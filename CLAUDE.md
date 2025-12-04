@@ -310,12 +310,10 @@ set-option -g detach-on-destroy on
 | Scenario | stdin TTY | stdout TTY | Interactive? | Uses tmux? |
 |----------|-----------|------------|--------------|------------|
 | User runs `dclaude` from terminal | yes | yes | yes | yes |
-| User runs `dclaude -p "test"` from terminal | yes | yes | yes | yes* |
+| User runs `dclaude -p "test"` from terminal | yes | yes | yes | no (print mode) |
 | Script/CI runs `dclaude` | no | no | no | should skip |
 | Piped input: `echo x \| dclaude` | no | yes | no | should skip |
 | Redirected output: `dclaude > out.txt` | yes | no | no | should skip |
-
-*Note: `-p` is a Claude argument that makes Claude print and exit. The shell environment is still interactive (TTY attached), so tmux is used even though the session exits immediately.
 
 **Why this matters:**
 - Tmux provides session management for interactive use (multiple concurrent sessions, reattachment)
@@ -326,8 +324,10 @@ set-option -g detach-on-destroy on
 **Implementation:**
 - Both persistent and ephemeral containers respect TTY detection
 - When no TTY is detected (non-interactive), Claude runs directly without tmux
-- When TTY is available (interactive), tmux provides session management
+- When `-p`/`--print` flag is detected, Claude runs directly without tmux (even with TTY)
+- When TTY is available and not in print mode, tmux provides session management
 - The `detect_tty_flags()` function returns `-i -t` flags for interactive mode, empty for non-interactive
+- The `is_print_mode()` function checks for `-p`/`--print` as separate arguments (safe from string matching)
 
 ## Chrome DevTools Integration
 
