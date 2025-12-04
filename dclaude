@@ -1535,6 +1535,119 @@ EOF
     exit 1
 }
 
+# Subcommand: pull latest image
+cmd_pull() {
+    info "Pulling latest image: $IMAGE"
+    if docker pull "$IMAGE"; then
+        success "Image pulled successfully"
+    else
+        error "Failed to pull image: $IMAGE"
+        exit 1
+    fi
+}
+
+# Subcommand: stop container for current directory
+cmd_stop() {
+    local container_name=$(get_container_name "$HOST_PATH")
+
+    # Check if container exists
+    if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        info "No container found for this directory"
+        debug "Container name would be: $container_name"
+        exit 0
+    fi
+
+    local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+
+    if [[ "$container_status" == "running" ]]; then
+        # Count active tmux sessions
+        local session_count
+        session_count=$(docker exec -u claude "$container_name" tmux list-sessions 2>/dev/null | wc -l | tr -d '[:space:]') || session_count=0
+
+        if [[ "$session_count" =~ ^[0-9]+$ ]] && [[ "$session_count" -gt 0 ]]; then
+            info "Stopping container $container_name ($session_count active session(s))..."
+        else
+            info "Stopping container $container_name..."
+        fi
+
+        if docker stop "$container_name" >/dev/null; then
+            success "Container stopped"
+        else
+            error "Failed to stop container"
+            exit 1
+        fi
+    else
+        info "Container $container_name is not running (status: $container_status)"
+    fi
+    exit 0
+}
+
+# Subcommand: remove container for current directory
+cmd_rm() {
+    local force=false
+
+    # Parse flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -f|--force)
+                force=true
+                shift
+                ;;
+            *)
+                error "Unknown option: $1"
+                info "Usage: dclaude rm [-f|--force]"
+                exit 1
+                ;;
+        esac
+    done
+
+    local container_name=$(get_container_name "$HOST_PATH")
+
+    # Check if container exists
+    if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        info "No container found for this directory"
+        debug "Container name would be: $container_name"
+        exit 0
+    fi
+
+    local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+
+    if [[ "$container_status" == "running" ]]; then
+        if [[ "$force" == "true" ]]; then
+            # Count active tmux sessions
+            local session_count
+            session_count=$(docker exec -u claude "$container_name" tmux list-sessions 2>/dev/null | wc -l | tr -d '[:space:]') || session_count=0
+
+            if [[ "$session_count" =~ ^[0-9]+$ ]] && [[ "$session_count" -gt 0 ]]; then
+                info "Removing running container $container_name ($session_count active session(s))..."
+            else
+                info "Removing running container $container_name..."
+            fi
+
+            if docker rm -f "$container_name" >/dev/null; then
+                success "Container removed"
+            else
+                error "Failed to remove container"
+                exit 1
+            fi
+        else
+            error "Container $container_name is running"
+            info "Stop it first with: dclaude stop"
+            info "Or force remove with: dclaude rm -f"
+            exit 1
+        fi
+    else
+        info "Removing container $container_name..."
+        if docker rm "$container_name" >/dev/null; then
+            success "Container removed"
+        else
+            error "Failed to remove container"
+            exit 1
+        fi
+    fi
+    exit 0
+}
+
 # Initialize HOST_PATH once for all commands
 HOST_PATH=$(get_host_path)
 
@@ -1562,6 +1675,18 @@ if [[ $# -gt 0 ]]; then
             shift
             cmd_gh "$@"
             ;;
+        pull)
+            shift
+            cmd_pull "$@"
+            ;;
+        stop)
+            shift
+            cmd_stop "$@"
+            ;;
+        rm)
+            shift
+            cmd_rm "$@"
+            ;;
         --help|-h|help)
             cat << 'EOF'
 dclaude - Dockerized Claude Code Launcher
@@ -1570,11 +1695,14 @@ Usage:
   dclaude [options]           Start new Claude session (default)
   dclaude new [options]       Start new Claude session (explicit)
   dclaude attach <session>    Attach to existing tmux session
+  dclaude pull                Pull latest Docker image
+  dclaude stop                Stop container for current directory
+  dclaude rm [-f]             Remove container for current directory
   dclaude chrome [options]    Launch Chrome with DevTools and MCP integration
   dclaude gh                  Authenticate GitHub CLI (runs gh auth login)
   dclaude exec [command]      Execute command in container (default: bash)
-  dclaude shell              Open bash shell in container
-  dclaude --help             Show this help
+  dclaude shell               Open bash shell in container
+  dclaude --help              Show this help
 
 Environment Variables:
   DCLAUDE_TAG                Docker image tag (default: latest)
@@ -1605,6 +1733,12 @@ Examples:
 
   # Start with ephemeral container (removed on exit)
   DCLAUDE_RM=true dclaude
+
+  # Update image and restart container
+  dclaude pull                                   # Pull latest image
+  dclaude stop                                   # Stop container (preserves it)
+  dclaude rm                                     # Remove stopped container
+  dclaude rm -f                                  # Force remove running container
 
   # Launch Chrome with DevTools for MCP integration
   dclaude chrome
