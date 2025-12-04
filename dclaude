@@ -1585,12 +1585,16 @@ cmd_update() {
     fi
 
     info "Updating Claude CLI..."
-    if docker exec -u claude "$container_name" npm update -g @anthropic-ai/claude-code; then
-        success "Claude CLI updated"
-        # Show new version
+    local npm_output
+    if npm_output=$(docker exec -u claude "$container_name" npm update -g @anthropic-ai/claude-code 2>&1); then
+        # Show command and output together, indented to align with "Debug: " prefix
+        debug "npm update -g @anthropic-ai/claude-code
+$(echo "$npm_output" | sed 's/^/       /')"
         local new_version=$(docker exec -u claude "$container_name" claude --version 2>/dev/null | head -1)
-        info "Version: $new_version"
+        success "Claude CLI updated: $new_version"
     else
+        debug "npm update -g @anthropic-ai/claude-code
+$(echo "$npm_output" | sed 's/^/       /')"
         error "Failed to update Claude CLI"
         exit 1
     fi
