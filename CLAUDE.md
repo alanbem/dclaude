@@ -2,6 +2,21 @@
 
 AI assistant guidance for working with the dclaude (Dockerized Claude Code) project.
 
+## ⚠️ CRITICAL: Dogfooding Awareness
+
+**You may be running inside dclaude right now!** When working on the dclaude project, be aware that:
+
+1. **The user is likely running you via dclaude** - you are inside the very container you're modifying
+2. **NEVER run `dclaude stop` or `dclaude rm` on the current directory** - this kills YOUR container and terminates the session
+3. **When testing dclaude commands**, always use a separate test directory:
+   ```bash
+   mkdir -p /tmp/dclaude-test && cd /tmp/dclaude-test
+   # Now safe to test dclaude stop, rm, etc.
+   ```
+4. **Check before destructive operations** - if working in the dclaude repo, any container management commands affect YOUR session
+
+**How to detect:** You receive a system prompt section titled "# dclaude Environment Context" which confirms you're running inside dclaude. If working directory is also the dclaude repository itself, you are dogfooding - exercise extreme caution with container lifecycle commands.
+
 ## Code Style Guidelines
 
 ### Comments and Documentation
