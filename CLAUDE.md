@@ -303,6 +303,32 @@ set-option -g detach-on-destroy on
 - ❌ **Session switching bug**: Using `detach-on-destroy off` caused sessions to switch instead of exit (FIXED: use `on`)
 - ❌ **Input lag in second session**: Creating detached session then attaching caused double tmux processes (FIXED: use direct `new-session`)
 
+### TTY Detection and Interactive Mode
+
+**Key concept**: Interactivity depends on how the command is called, not on the arguments passed to Claude.
+
+| Scenario | stdin TTY | stdout TTY | Interactive? | Uses tmux? |
+|----------|-----------|------------|--------------|------------|
+| User runs `dclaude` from terminal | yes | yes | yes | yes |
+| User runs `dclaude -p "test"` from terminal | yes | yes | yes | yes* |
+| Script/CI runs `dclaude` | no | no | no | should skip |
+| Piped input: `echo x \| dclaude` | no | yes | no | should skip |
+| Redirected output: `dclaude > out.txt` | yes | no | no | should skip |
+
+*Note: `-p` is a Claude argument that makes Claude print and exit. The shell environment is still interactive (TTY attached), so tmux is used even though the session exits immediately.
+
+**Why this matters:**
+- Tmux provides session management for interactive use (multiple concurrent sessions, reattachment)
+- For non-interactive use (scripts, CI, piped commands), tmux adds unnecessary overhead
+- TTY detection (`test -t 0` for stdin, `test -t 1` for stdout) determines the execution context
+- The `detect_tty_flags()` function checks TTY availability and returns appropriate Docker flags
+
+**Implementation:**
+- Both persistent and ephemeral containers respect TTY detection
+- When no TTY is detected (non-interactive), Claude runs directly without tmux
+- When TTY is available (interactive), tmux provides session management
+- The `detect_tty_flags()` function returns `-i -t` flags for interactive mode, empty for non-interactive
+
 ## Chrome DevTools Integration
 
 The `dclaude chrome` subcommand provides seamless integration between Claude and Chrome DevTools via the Model Context Protocol (MCP).
