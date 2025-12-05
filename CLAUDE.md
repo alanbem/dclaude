@@ -17,6 +17,43 @@ AI assistant guidance for working with the dclaude (Dockerized Claude Code) proj
 
 **How to detect:** You receive a system prompt section titled "# dclaude Environment Context" which confirms you're running inside dclaude. If working directory is also the dclaude repository itself, you are dogfooding - exercise extreme caution with container lifecycle commands.
 
+## Testing Guidelines
+
+### Directory Structure
+
+**`tests/` - Tracked Test Code and Documentation**
+
+Reusable test scripts, test plans, and test documentation that should be version controlled:
+
+- **Test plans**: `tests/TEST_<feature>.md` - Instructions for testing features
+- **Test scripts**: `tests/test_<feature>.sh` - Automated test scripts
+- **Test utilities**: `tests/utils/` - Shared test helper functions
+- **Test fixtures**: `tests/fixtures/` - Static test data
+
+**`artifacts/` - Gitignored Ephemeral Outputs**
+
+One-time documents, intermediary test results, and outputs that should NOT be tracked:
+
+- **Test results**: `artifacts/RESULTS_<feature>.md` - Output from test runs
+- **Scratch documents**: `artifacts/scratch_*.md` - Temporary analysis documents
+- **Generated files**: `artifacts/generated/` - Build outputs, reports, logs
+- **Intermediary data**: `artifacts/data/` - Temporary data files
+
+**Example:**
+```bash
+tests/                          # Tracked in git
+├── TEST_SSH_FEATURE.md        # Test plan (reusable)
+├── test_port_detection.sh     # Test script (reusable)
+└── fixtures/
+    └── sample_config.json
+
+artifacts/                      # Gitignored
+├── RESULTS_SSH_FEATURE.md     # Test run output (ephemeral)
+├── scratch_analysis.md        # One-time analysis (ephemeral)
+└── logs/
+    └── test_2024_12_06.log
+```
+
 ## Code Style Guidelines
 
 ### Comments and Documentation
@@ -256,7 +293,7 @@ DCLAUDE_TAG=local ./dclaude --version
 
 ### SSH Authentication System
 
-The `handle_ssh_auth()` function provides flexible SSH authentication via `DCLAUDE_SSH` environment variable.
+The `handle_ssh_auth()` function provides flexible SSH authentication via `DCLAUDE_GIT_AUTH` environment variable.
 
 **User Documentation**: See README.md "SSH Authentication" section for usage and examples.
 
@@ -472,6 +509,75 @@ dclaude
 - Package: `chrome-devtools-mcp@latest`
 - Protocol: Chrome DevTools Protocol (CDP)
 - Connection: `--browserUrl=http://localhost:9222`
+
+## SSH Server for Remote Access
+
+The `dclaude ssh` command provides SSH access to the container for remote development tools like JetBrains Gateway, VS Code Remote SSH, or direct SSH connections.
+
+### Usage
+
+```bash
+# Start container (SSH port automatically reserved)
+dclaude
+
+# Start SSH server and show connection info
+dclaude ssh
+
+# Stop SSH server
+dclaude ssh --stop
+```
+
+### Connection
+
+```bash
+ssh claude@localhost -p <port>
+# Password: claude
+# Port is shown when running 'dclaude ssh'
+```
+
+### How It Works
+
+1. When container is created, a random available port is reserved and stored in a container label
+2. `dclaude ssh` reads the port from the label and starts sshd on that port
+3. Port is mapped identically on host and container (e.g., `34567:34567`)
+4. Works with both host and bridge networking modes
+
+### Use Cases
+
+**JetBrains Gateway (PhpStorm, IntelliJ, WebStorm, PyCharm, etc.):**
+1. Start container: `dclaude`
+2. Start SSH server: `dclaude ssh` (note the port shown)
+3. Open JetBrains Gateway → New Connection → SSH
+4. Connect to `localhost:<port>` with username `claude`, password `claude`
+5. Gateway automatically downloads and deploys IDE backend into the container
+6. Select your project directory
+
+**VS Code Remote SSH:**
+1. Start container: `dclaude`
+2. Start SSH server: `dclaude ssh` (note the port shown)
+3. In VS Code: Remote-SSH → Connect to Host → `claude@localhost:<port>`
+
+**Direct SSH/SFTP:**
+- SSH: `ssh claude@localhost -p <port>`
+- SFTP: `sftp -P <port> claude@localhost`
+
+### Technical Details
+
+**SSH configuration:**
+- Password authentication enabled (username: `claude`, password: `claude`)
+- SFTP subsystem enabled for file transfer
+- Host keys generated on first `dclaude ssh` invocation
+- sshd listens on the dynamically assigned port (not port 22)
+
+**Port allocation:**
+- Random available port selected at container creation (range: 2222-65000)
+- Port stored in container label `dclaude.ssh.port`
+- Same port used on both host and container sides
+- SSH server only runs when started with `dclaude ssh`
+
+### Security Note
+
+SSH password is hardcoded (`claude:claude`) - suitable for local development only. For production or shared environments, consider SSH key authentication.
 
 ## Security Constraints
 - No sudo in container (removed for security)

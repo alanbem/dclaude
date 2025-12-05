@@ -26,7 +26,7 @@ Environment variables for dclaude:
   DCLAUDE_DOCKER_SOCKET    Docker socket path
   DCLAUDE_NETWORK          Network mode (auto/host/bridge)
   DCLAUDE_REGISTRY         Docker registry
-  DCLAUDE_SSH              SSH auth mode (auto/agent-forwarding/key-mount/none)
+  DCLAUDE_GIT_AUTH         SSH auth for Git (auto/agent-forwarding/key-mount/none)
   DCLAUDE_MOUNT_CONFIGS    Enable config mounting (true/false)
   DCLAUDE_MOUNT_DOCKER     Mount .docker/ directory
   DCLAUDE_MOUNT_GIT        Mount .gitconfig file

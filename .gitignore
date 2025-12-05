@@ -54,3 +54,7 @@ build/
 tasks/*
 !tasks/_TASK.md
 !tasks/CLAUDE.md
+compass_artifact_*.md
+
+# Ephemeral artifacts (test results, one-time docs, intermediary outputs)
+artifacts/

@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     jq \
     nano \
     openssh-client \
+    openssh-server \
     socat \
     gosu \
     procps \
@@ -23,6 +24,7 @@ RUN apt-get update && apt-get install -y \
     locales \
     tini \
     inotify-tools \
+    wget \
     # Build tools (required for Homebrew)
     build-essential \
     # Docker CLI installation dependencies
@@ -61,11 +63,21 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | g
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
+# Configure SSH server for remote access (JetBrains Gateway, remote debugging, etc.)
+# SFTP subsystem enables file transfer for IDE remote development
+RUN mkdir -p /var/run/sshd && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PermitUserEnvironment no/PermitUserEnvironment yes/' /etc/ssh/sshd_config && \
+    sed -i '/^Subsystem\s*sftp/d' /etc/ssh/sshd_config && \
+    echo "Subsystem sftp /usr/lib/openssh/sftp-server" >> /etc/ssh/sshd_config
+
 # Create non-root user for running Claude
 # Note: Container starts as root for entrypoint setup, then switches to claude user
+# Password set for SSH access (JetBrains Gateway authentication)
 RUN useradd -m -s /bin/bash claude \
     && groupadd docker \
-    && usermod -aG docker claude
+    && usermod -aG docker claude \
+    && echo "claude:claude" | chpasswd
 
 # Install Homebrew as linuxbrew user (Homebrew's recommended approach)
 RUN useradd -m -s /bin/bash linuxbrew \
@@ -114,7 +126,8 @@ RUN npm install -g @anthropic-ai/claude-code
 RUN mkdir -p /home/claude/workspace \
     /home/claude/.claude \
     /home/claude/.config \
-    /home/claude/.cache
+    /home/claude/.cache \
+    /home/claude/.local/share
 
 # Pre-populate SSH known_hosts with common Git hosting services
 # Prevents "Host key verification failed" on first SSH connection
@@ -129,7 +142,7 @@ RUN mkdir -p /home/claude/.ssh && \
 # Switch back to root for entrypoint permission handling
 USER root
 
-# Declare .claude as a volume for persistent data
+# Declare volumes for persistent data
 VOLUME ["/home/claude/.claude"]
 
 # Copy entrypoint script and tmux config

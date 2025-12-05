@@ -15,7 +15,7 @@ readonly REMOVE_CONTAINER="${DCLAUDE_RM:-false}"
 # Docker socket will be detected dynamically unless overridden
 DOCKER_SOCKET="${DCLAUDE_DOCKER_SOCKET:-}"
 readonly MOUNT_CONFIGS="${DCLAUDE_MOUNT_CONFIGS:-false}"
-readonly SSH_MODE="${DCLAUDE_SSH:-auto}"  # auto, agent-forwarding, key-mount, none
+readonly GIT_AUTH_MODE="${DCLAUDE_GIT_AUTH:-auto}"  # auto, agent-forwarding, key-mount, none
 readonly ENABLE_SYSTEM_CONTEXT="${DCLAUDE_SYSTEM_CONTEXT:-true}"  # Inform Claude about dclaude environment
 
 # Chrome configuration (not readonly to allow --port flag override)
@@ -160,19 +160,28 @@ find_available_port() {
     local port
 
     for ((port=start_port; port<=end_port; port++)); do
-        # Try multiple methods for port checking for better compatibility
         local port_in_use=false
 
-        # Try netstat (works on most platforms)
+        # Fast check 1: netstat (catches most listening processes)
         if command -v netstat &>/dev/null; then
             if netstat -an 2>/dev/null | grep -qE "[.:]$port\s+(LISTEN|ESTABLISHED)" 2>/dev/null; then
                 port_in_use=true
             fi
         fi
 
-        # Also try lsof if available (more reliable on macOS)
+        # Fast check 2: lsof (more reliable on macOS, catches additional cases)
         if ! $port_in_use && command -v lsof &>/dev/null; then
-            if lsof -i ":$port" &>/dev/null; then
+            if lsof -i ":$port" &>/dev/null 2>&1; then
+                port_in_use=true
+            fi
+        fi
+
+        # Comprehensive check: Socket test (catches Docker containers, VMs, kernel-level bindings)
+        # Only run if fast checks didn't detect anything (avoids timeout overhead)
+        if ! $port_in_use; then
+            if timeout 0.1 bash -c "exec 3<>/dev/tcp/localhost/$port" 2>/dev/null; then
+                # Successfully connected - something is listening
+                exec 3<&- 2>/dev/null  # Close connection
                 port_in_use=true
             fi
         fi
@@ -490,7 +499,7 @@ get_container_name() {
 # Generate system context prompt for Claude
 generate_system_context() {
     local network_mode="${1:-auto}"
-    local ssh_mode="${2:-auto}"
+    local git_auth_mode="${2:-auto}"
     local has_docker="${3:-false}"
     local platform="${4:-unknown}"
     local docker_socket="${5:-}"
@@ -598,8 +607,8 @@ EOF
             ;;
     esac
 
-    # SSH authentication
-    case "$ssh_mode" in
+    # Git SSH authentication
+    case "$git_auth_mode" in
         agent-forwarding)
             cat <<'EOF'
 - **SSH Authentication**: Agent forwarding enabled
@@ -630,7 +639,7 @@ EOF
   - SSH keys not available in container
   - Cannot authenticate to remote Git repositories via SSH
   - Recommend using HTTPS authentication for Git operations
-  - Or restart with DCLAUDE_SSH=agent-forwarding or DCLAUDE_SSH=key-mount
+  - Or restart with DCLAUDE_GIT_AUTH=agent-forwarding or DCLAUDE_GIT_AUTH=key-mount
 EOF
             ;;
     esac
@@ -661,7 +670,7 @@ When suggesting commands or file operations, you can treat this environment as i
 EOF
 }
 
-# Handle SSH authentication based on DCLAUDE_SSH mode
+# Handle SSH authentication based on DCLAUDE_GIT_AUTH mode
 # Setup SSH proxy container for macOS
 setup_ssh_proxy_container() {
     local proxy_container="dclaude-ssh-proxy-$(id -u)"
@@ -712,33 +721,33 @@ setup_ssh_proxy_container() {
     return 0
 }
 
-handle_ssh_auth() {
+handle_git_auth() {
     local docker_args=()
-    local ssh_mode="${SSH_MODE}"
+    local git_auth_mode="${GIT_AUTH_MODE}"
 
-    # If config mounting is enabled and SSH mode is auto, prefer key-mount for consistency
-    if [[ "$MOUNT_CONFIGS" == "true" ]] && [[ "$ssh_mode" == "auto" ]]; then
+    # If config mounting is enabled and git auth mode is auto, prefer key-mount for consistency
+    if [[ "$MOUNT_CONFIGS" == "true" ]] && [[ "$git_auth_mode" == "auto" ]]; then
         if [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
-            ssh_mode="key-mount"
-            debug "SSH mode: key-mount (DCLAUDE_MOUNT_CONFIGS=true prefers key mounting)"
+            git_auth_mode="key-mount"
+            debug "Git auth: key-mount (DCLAUDE_MOUNT_CONFIGS=true prefers key mounting)"
         fi
     fi
 
-    # Auto-detect best SSH method if set to auto
-    if [[ "$ssh_mode" == "auto" ]]; then
+    # Auto-detect best method if set to auto
+    if [[ "$git_auth_mode" == "auto" ]]; then
         if [[ -n "${SSH_AUTH_SOCK:-}" ]] && [[ -S "${SSH_AUTH_SOCK}" ]]; then
-            ssh_mode="agent-forwarding"
-            debug "SSH mode: agent-forwarding (auto-detected active agent)"
+            git_auth_mode="agent-forwarding"
+            debug "Git auth: agent-forwarding (auto-detected active agent)"
         elif [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
-            ssh_mode="key-mount"
-            debug "SSH mode: key-mount (auto-detected SSH directory)"
+            git_auth_mode="key-mount"
+            debug "Git auth: key-mount (auto-detected SSH directory)"
         else
-            ssh_mode="none"
-            debug "SSH mode: none (no SSH agent or keys found)"
+            git_auth_mode="none"
+            debug "Git auth: none (no SSH agent or keys found)"
         fi
     fi
 
-    case "$ssh_mode" in
+    case "$git_auth_mode" in
         agent-forwarding)
             if [[ -z "${SSH_AUTH_SOCK:-}" ]]; then
                 warning "SSH agent forwarding requested but SSH_AUTH_SOCK not set"
@@ -773,7 +782,7 @@ handle_ssh_auth() {
                     ;;
                 windows)
                     warning "SSH agent forwarding not fully supported on Windows"
-                    warning "Consider using key-mount mode instead: DCLAUDE_SSH=key-mount"
+                    warning "Consider using key-mount mode instead: DCLAUDE_GIT_AUTH=key-mount"
                     return 1
                     ;;
             esac
@@ -796,7 +805,7 @@ handle_ssh_auth() {
             ;;
 
         *)
-            error "Invalid SSH mode: $ssh_mode (valid: auto, agent-forwarding, key-mount, none)"
+            error "Invalid git auth mode: $git_auth_mode (valid: auto, agent-forwarding, key-mount, none)"
             return 1
             ;;
     esac
@@ -818,7 +827,7 @@ mount_host_configs() {
     fi
 
     info "Mounting host configurations (read-only)"
-    debug "SSH authentication handled separately via DCLAUDE_SSH"
+    debug "SSH authentication handled separately via DCLAUDE_GIT_AUTH"
 
     # Docker configuration (docker-cli installed)
     # Default to true when master switch is enabled
@@ -1030,25 +1039,25 @@ main() {
     fi
     debug "Docker socket detection: ${DOCKER_SOCKET:-<not found>}"
 
-    # Resolve SSH mode from 'auto' to actual mode (needed for system context)
-    local resolved_ssh_mode="$SSH_MODE"
-    if [[ "$SSH_MODE" == "auto" ]]; then
-        # Same auto-detection logic as handle_ssh_auth()
+    # Resolve git auth mode from 'auto' to actual mode (needed for system context)
+    local resolved_git_auth="$GIT_AUTH_MODE"
+    if [[ "$GIT_AUTH_MODE" == "auto" ]]; then
+        # Same auto-detection logic as handle_git_auth()
         if [[ "$MOUNT_CONFIGS" == "true" ]] && [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
-            resolved_ssh_mode="key-mount"
-            debug "SSH mode resolved: key-mount (DCLAUDE_MOUNT_CONFIGS=true)"
+            resolved_git_auth="key-mount"
+            debug "Git auth resolved: key-mount (DCLAUDE_MOUNT_CONFIGS=true)"
         elif [[ -n "${SSH_AUTH_SOCK:-}" ]] && [[ -S "${SSH_AUTH_SOCK}" ]]; then
-            resolved_ssh_mode="agent-forwarding"
-            debug "SSH mode resolved: agent-forwarding (active agent detected)"
+            resolved_git_auth="agent-forwarding"
+            debug "Git auth resolved: agent-forwarding (active agent detected)"
         elif [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
-            resolved_ssh_mode="key-mount"
-            debug "SSH mode resolved: key-mount (SSH directory detected)"
+            resolved_git_auth="key-mount"
+            debug "Git auth resolved: key-mount (SSH directory detected)"
         else
-            resolved_ssh_mode="none"
-            debug "SSH mode resolved: none (no SSH agent or keys found)"
+            resolved_git_auth="none"
+            debug "Git auth resolved: none (no SSH agent or keys found)"
         fi
     else
-        debug "SSH mode: $resolved_ssh_mode (user-specified)"
+        debug "Git auth: $resolved_git_auth (user-specified)"
     fi
 
     # Generate system context for Claude (if enabled) - must be done early for all code paths
@@ -1058,10 +1067,10 @@ main() {
         [[ -n "$DOCKER_SOCKET" ]] && [[ -S "$DOCKER_SOCKET" ]] && has_docker="true"
 
         local system_context
-        system_context=$(generate_system_context "$network_mode" "$resolved_ssh_mode" "$has_docker" "$platform" "$DOCKER_SOCKET")
+        system_context=$(generate_system_context "$network_mode" "$resolved_git_auth" "$has_docker" "$platform" "$DOCKER_SOCKET")
 
         claude_args+=("--append-system-prompt" "$system_context")
-        debug "System context enabled (${#system_context} chars, has_docker=$has_docker, ssh=$resolved_ssh_mode, platform=$platform)"
+        debug "System context enabled (${#system_context} chars, has_docker=$has_docker, git_auth=$resolved_git_auth, platform=$platform)"
         if [[ "$DEBUG" == "true" ]]; then
             debug "System context preview: ${system_context:0:100}..."
         fi
@@ -1163,6 +1172,20 @@ main() {
         -e "TERM=${TERM:-xterm-256color}"
     )
 
+    # Reserve SSH port for remote access (JetBrains Gateway, VS Code Remote, etc.)
+    local ssh_port
+    ssh_port=$(find_available_port 2222 65000)
+    debug "SSH port reserved: $ssh_port"
+    DOCKER_ARGS+=(--label "dclaude.ssh.port=${ssh_port}")
+
+    # Port mapping only needed for bridge mode (host mode shares network stack)
+    if [[ "$network_mode" != "host" ]]; then
+        DOCKER_ARGS+=(-p "${ssh_port}:${ssh_port}")
+        debug "SSH port mapping: ${ssh_port}:${ssh_port} (bridge mode)"
+    else
+        debug "SSH port: ${ssh_port} (host mode, no mapping needed)"
+    fi
+
     # Pass through terminal program information for proper logo rendering
     if [[ -n "${TERM_PROGRAM:-}" ]]; then
         DOCKER_ARGS+=(-e "TERM_PROGRAM=${TERM_PROGRAM}")
@@ -1191,7 +1214,7 @@ main() {
     # Use process substitution to preserve null bytes
     while IFS= read -r -d '' ssh_arg; do
         [[ -n "$ssh_arg" ]] && DOCKER_ARGS+=("$ssh_arg")
-    done < <(handle_ssh_auth)
+    done < <(handle_git_auth)
 
     # Mount host configurations if enabled
     # Use process substitution to preserve null bytes
@@ -1214,7 +1237,14 @@ main() {
         # For persistent containers, run tini with tail daemon for zombie reaping
         # tini will reap zombie processes created by exec commands
         debug "Starting persistent container with tini + tail daemon"
-        
+
+        # TODO: Add retry logic for SSH port allocation race condition
+        # When multiple dclaude instances start simultaneously, they can both detect
+        # the same SSH port as available before either binds to it. This causes the
+        # second instance to fail with "port is already allocated" error.
+        # Solution: If docker run fails with port conflict, re-detect port and retry (max 3 attempts)
+        # See: SSH_TEST_RESULTS.md - Issue 1: Race Condition in Parallel Container Startup
+
         # Run in detached mode (-d) and capture output (Container ID) or errors
         local run_output
         if ! run_output=$(docker "${DOCKER_ARGS[@]}" -d --entrypoint /usr/bin/tini "$IMAGE" -- tail -f /dev/null 2>&1); then
@@ -1637,6 +1667,138 @@ cmd_stop() {
     exit 0
 }
 
+# Subcommand: SSH server for remote access (JetBrains Gateway, debugging, etc.)
+cmd_ssh() {
+    local action=""
+
+    # Parse flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --stop)
+                action="stop"
+                shift
+                ;;
+            --help|-h)
+                cat << 'SSH_HELP'
+dclaude ssh - SSH Server for Remote Access
+
+Usage:
+  dclaude ssh              Start SSH server and show connection info
+  dclaude ssh --stop       Stop SSH server
+
+Connection:
+  ssh claude@localhost -p <port>
+  Username: claude
+  Password: claude
+
+Use Cases:
+  - JetBrains Gateway (PhpStorm, IntelliJ, WebStorm, etc.)
+  - Remote debugging
+  - SFTP file transfer
+  - VS Code Remote SSH
+
+JetBrains Gateway Setup:
+  1. Start container: dclaude
+  2. Start SSH: dclaude ssh
+  3. Open JetBrains Gateway
+  4. New Connection → SSH → localhost:<port shown above>
+  5. Username: claude, Password: claude
+  6. Gateway will download and install IDE backend automatically
+  7. Select your project directory
+
+SSH_HELP
+                exit 0
+                ;;
+            *)
+                error "Unknown option: $1"
+                info "Usage: dclaude ssh [--stop]"
+                exit 1
+                ;;
+        esac
+    done
+
+    local container_name=$(get_container_name "$HOST_PATH")
+
+    # Check if container exists
+    if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        error "No container found for this directory"
+        info "Run 'dclaude' first to create a persistent container"
+        exit 1
+    fi
+
+    local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+
+    if [[ "$container_status" != "running" ]]; then
+        if [[ "$container_status" == "exited" ]]; then
+            info "Starting container: $container_name"
+            docker start "$container_name" >/dev/null
+            sleep 1
+        else
+            error "Container $container_name is in unexpected state: $container_status"
+            exit 1
+        fi
+    fi
+
+    # Get SSH port from container label
+    local ssh_port
+    ssh_port=$(docker inspect --format='{{index .Config.Labels "dclaude.ssh.port"}}' "$container_name" 2>/dev/null)
+
+    if [[ -z "$ssh_port" ]]; then
+        error "SSH port not configured for this container"
+        echo ""
+        info "This container was created with an older version of dclaude."
+        info "To enable SSH, recreate the container:"
+        echo ""
+        echo "  dclaude rm -f"
+        echo "  dclaude"
+        echo "  dclaude ssh"
+        echo ""
+        exit 1
+    fi
+
+    case "$action" in
+        stop)
+            if docker exec "$container_name" pgrep -x sshd >/dev/null 2>&1; then
+                info "Stopping SSH server..."
+                docker exec -u root "$container_name" pkill -x sshd 2>/dev/null || true
+                success "SSH server stopped"
+            else
+                info "SSH server is not running"
+            fi
+            ;;
+
+        "")
+            # Default: start SSH and show connection info
+            # Start SSH if not running
+            if docker exec "$container_name" pgrep -x sshd >/dev/null 2>&1; then
+                info "SSH server already running"
+            else
+                info "Starting SSH server on port $ssh_port..."
+                docker exec -u root "$container_name" sh -c "
+                    if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
+                        ssh-keygen -A >/dev/null 2>&1
+                    fi
+                    /usr/sbin/sshd -p $ssh_port
+                "
+                success "SSH server started"
+            fi
+
+            echo ""
+            echo "SSH Connection"
+            echo "=============="
+            echo "  Host:     localhost"
+            echo "  Port:     $ssh_port"
+            echo "  Username: claude"
+            echo "  Password: claude"
+            echo ""
+            echo "  ssh claude@localhost -p $ssh_port"
+            echo ""
+            ;;
+    esac
+
+    exit 0
+}
+
 # Subcommand: remove container for current directory
 cmd_rm() {
     local force=false
@@ -1746,6 +1908,10 @@ if [[ $# -gt 0 ]]; then
             shift
             cmd_rm "$@"
             ;;
+        ssh)
+            shift
+            cmd_ssh "$@"
+            ;;
         --help|-h|help)
             cat << 'EOF'
 dclaude - Dockerized Claude Code Launcher
@@ -1758,6 +1924,7 @@ Usage:
   dclaude update              Update Claude CLI inside container
   dclaude stop                Stop container for current directory
   dclaude rm [-f]             Remove container for current directory
+  dclaude ssh                 Start SSH server for remote access
   dclaude chrome [options]    Launch Chrome with DevTools and MCP integration
   dclaude gh                  Authenticate GitHub CLI (runs gh auth login)
   dclaude exec [command]      Execute command in container (default: bash)
@@ -1769,7 +1936,7 @@ Environment Variables:
   DCLAUDE_RM                 Remove container on exit (default: false)
   DCLAUDE_DEBUG              Enable debug output (default: false)
   DCLAUDE_MOUNT_CONFIGS      Mount host configs (default: false)
-  DCLAUDE_SSH                SSH mode: auto, agent-forwarding, key-mount, none
+  DCLAUDE_GIT_AUTH           SSH auth for Git: auto, agent-forwarding, key-mount, none
   DCLAUDE_NETWORK            Network mode: auto, host, bridge
   DCLAUDE_DOCKER_SOCKET      Override Docker socket path
   DCLAUDE_TMUX_SESSION       Custom tmux session name (default: claude-TIMESTAMP)
@@ -1800,6 +1967,10 @@ Examples:
   dclaude stop                                   # Stop container (preserves it)
   dclaude rm                                     # Remove stopped container
   dclaude rm -f                                  # Force remove running container
+
+  # SSH server for remote access (JetBrains Gateway, VS Code Remote, etc.)
+  dclaude ssh                                  # Start SSH server, show connection info
+  dclaude ssh --stop                           # Stop SSH server
 
   # Launch Chrome with DevTools for MCP integration
   dclaude chrome

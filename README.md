@@ -144,6 +144,49 @@ Persistent containers use tmux for transparent session management:
 
 This architecture enables multiple concurrent Claude instances while maintaining a native terminal feel.
 
+### SSH Server for Remote Access
+
+Enable SSH access to the container for remote development tools like JetBrains Gateway, VS Code Remote SSH, or direct SSH/SFTP connections.
+
+```bash
+# Start container (SSH port automatically reserved)
+dclaude
+
+# Start SSH server and show connection info
+dclaude ssh
+
+# Stop SSH server
+dclaude ssh --stop
+```
+
+**How it works:**
+1. When container is created, a random available port is reserved (range: 2222-65000)
+2. Port is stored in container label `dclaude.ssh.port`
+3. `dclaude ssh` reads the port and starts sshd on that port
+4. Works with both host and bridge networking modes
+
+**Connection details:**
+- Host: `localhost`
+- Port: Shown when running `dclaude ssh`
+- Username: `claude`
+- Password: `claude`
+
+**Use cases:**
+- **JetBrains Gateway** (PhpStorm, IntelliJ, WebStorm, PyCharm, etc.)
+- **VS Code Remote SSH**
+- **Remote debugging**
+- **SFTP file transfer**
+
+**JetBrains Gateway setup:**
+1. Start container: `dclaude`
+2. Start SSH: `dclaude ssh` (note the port shown)
+3. Open JetBrains Gateway → New Connection → SSH
+4. Connect to `localhost:<port>` with username `claude`, password `claude`
+5. Gateway downloads and installs IDE backend automatically
+6. Select your project directory
+
+**Security note:** SSH password is hardcoded (`claude:claude`) - suitable for local development only. For production environments, consider using SSH key authentication.
+
 ### Chrome DevTools Integration
 
 Integrate Claude with Chrome DevTools for browser automation and debugging via the Model Context Protocol (MCP).
@@ -440,7 +483,7 @@ DCLAUDE_NETWORK=auto dclaude  # default
 | `DCLAUDE_SYSTEM_CONTEXT` | Inform Claude about dclaude environment | `true` | `true`, `false` |
 | `CLAUDE_MODEL` | Claude model to use | (Claude's default) | Model name |
 | **SSH Authentication** | | | |
-| `DCLAUDE_SSH` | SSH authentication mode | `auto` | `auto`, `agent-forwarding`, `key-mount`, `none` |
+| `DCLAUDE_GIT_AUTH` | SSH auth for Git | `auto` | `auto`, `agent-forwarding`, `key-mount`, `none` |
 | **Config Mounting** | | | |
 | `DCLAUDE_MOUNT_CONFIGS` | Master switch to enable config mounting | `false` | `true`, `false` |
 | `DCLAUDE_MOUNT_DOCKER` | Mount `.docker/` directory | `true`* | `true`, `false` |
@@ -490,7 +533,7 @@ DCLAUDE_SYSTEM_CONTEXT=false dclaude
 
 ### SSH Authentication
 
-dclaude provides flexible SSH authentication options via the `DCLAUDE_SSH` environment variable:
+dclaude provides flexible SSH authentication options via the `DCLAUDE_GIT_AUTH` environment variable:
 
 #### Authentication Modes
 
@@ -515,13 +558,13 @@ dclaude provides flexible SSH authentication options via the `DCLAUDE_SSH` envir
 
 ```bash
 # Use SSH agent forwarding (most secure, Linux works best)
-DCLAUDE_SSH=agent-forwarding dclaude
+DCLAUDE_GIT_AUTH=agent-forwarding dclaude
 
 # Use key mounting (most compatible)
-DCLAUDE_SSH=key-mount dclaude
+DCLAUDE_GIT_AUTH=key-mount dclaude
 
 # Let dclaude choose the best method
-dclaude  # or DCLAUDE_SSH=auto dclaude
+dclaude  # or DCLAUDE_GIT_AUTH=auto dclaude
 ```
 
 #### Platform Notes
