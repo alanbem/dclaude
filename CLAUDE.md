@@ -287,7 +287,24 @@ DCLAUDE_TAG=local ./dclaude --version
 ```
 
 ### Making Changes
-- **Dockerfile changes**: Test with local build before committing
+
+**Files requiring image rebuild** (baked into Docker image):
+- `Dockerfile` - Container definition
+- `docker-entrypoint.sh` - Startup script
+- `.tmux.conf` - Tmux configuration
+
+After changing these, rebuild and test:
+```bash
+docker build -t alanbem/dclaude:local .
+DCLAUDE_TAG=local ./dclaude
+```
+
+**Files NOT requiring rebuild** (used directly from host):
+- `dclaude` - Launcher script (runs on host)
+- `README.md`, `CLAUDE.md` - Documentation
+
+General guidelines:
+- **Dockerfile changes**: Always test with local build before committing
 - **dclaude script changes**: Test on multiple platforms if possible
 - **Documentation**: User-facing docs in README.md, technical context here
 

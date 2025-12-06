@@ -69,6 +69,17 @@ debug() {
     fi
 }
 
+# Reset terminal mouse mode after tmux exits
+# Prevents iTerm2 warnings about mouse reporting being left on
+reset_terminal_mouse() {
+    # Disable all mouse reporting modes:
+    # ?1000 - X10 mouse reporting
+    # ?1002 - Cell motion mouse tracking
+    # ?1003 - All motion mouse tracking
+    # ?1006 - SGR extended mouse reporting
+    printf '\033[?1000l\033[?1002l\033[?1003l\033[?1006l'
+}
+
 # Detect platform
 detect_platform() {
     case "$(uname -s)" in
@@ -1130,7 +1141,10 @@ main() {
                 debug "Creating new tmux session running Claude"
                 debug "Claude args count: ${#claude_args[@]}, user args: $*"
                 info "Starting new Claude session..."
-                exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
+                docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
+                local tmux_exit=$?
+                reset_terminal_mouse
+                exit $tmux_exit
             else
                 # Non-interactive or print mode - run claude directly without tmux
                 debug "Non-interactive or print mode, running Claude directly (no tmux)"
@@ -1280,7 +1294,10 @@ main() {
             debug "Creating new tmux session running Claude"
             debug "Claude args count: ${#claude_args[@]}, user args: $*"
             info "Starting new Claude session..."
-            exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
+            docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
+            local tmux_exit=$?
+            reset_terminal_mouse
+            exit $tmux_exit
         else
             # Non-interactive or print mode - run claude directly without tmux
             debug "Non-interactive or print mode, running Claude directly (no tmux)"
@@ -1426,7 +1443,10 @@ cmd_attach() {
 
     # Attach to existing session
     info "Attaching to session: $session_name"
-    exec docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf attach-session -t "$session_name"
+    docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf attach-session -t "$session_name"
+    local tmux_exit=$?
+    reset_terminal_mouse
+    exit $tmux_exit
 }
 
 # Subcommand: launch Chrome with DevTools and ensure MCP configured
