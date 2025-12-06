@@ -678,13 +678,14 @@ make verify                    # Run installation verification
 
 When the user asks to "kill dclaudes" or "kill dclaude instances":
 - Stop and remove all dclaude containers
-- Reset terminal mouse mode (prevents iTerm2 warnings)
 - Do NOT remove volumes (preserves config and cache)
 - Only remove volumes if explicitly asked
 
 ```bash
-docker ps -a --filter "name=dclaude" -q | xargs -r docker rm -f; printf '\033[?1000l\033[?1002l\033[?1003l\033[?1006l'
+docker ps -a --filter "name=dclaude" -q | xargs -r docker rm -f
 ```
+
+**Note:** Force-killing containers may leave terminal mouse mode enabled, causing iTerm2 warnings. User should click "Yes" on the iTerm notification or run `printf '\033[?1000l\033[?1002l\033[?1003l\033[?1006l'` in the affected terminal. Graceful exit (Ctrl+C or `/exit` in Claude) avoids this issue.
 
 ### Iterative Development Workflow
 
