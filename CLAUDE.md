@@ -362,6 +362,41 @@ set-option -g detach-on-destroy on
 - `aggressive-resize off` - Prevents input lag in multiple sessions
 - Simple `new-session` command without detach/attach pattern prevents double tmux processes that cause lag
 
+### Status Bar Design
+
+The tmux status bar displays environment context at the bottom of the screen.
+
+**Layout:**
+```
+ net: HOST • dir: /path/to/dir      session: NAME      claude: 1.2.3 • image: local
+ └─ left ─────────────────────┘     └─ center ─┘       └────────── right ─────────┘
+```
+
+**Design Principles:**
+1. **Theme-agnostic**: Works with both dark and light terminal themes
+2. **Claude branding**: Labels use Claude orange (#D97757)
+3. **Minimal footprint**: Single status line, no borders
+
+**Color Scheme:**
+| Element | Color | Rationale |
+|---------|-------|-----------|
+| Background | `terminal` | Matches user's terminal theme |
+| Labels | `#D97757` | Claude orange for branding |
+| Values | `terminal` | Adapts to user's theme (light/dark) |
+| Separators | `#D97757` | Orange dot (•) between attributes |
+
+**Internal Environment Variables:**
+These are passed via `docker exec -e` when creating tmux sessions:
+- `_DCLAUDE_NET` - Network mode (host/bridge)
+- `_DCLAUDE_TAG` - Docker image tag
+- `_DCLAUDE_SESSION` - Session name ("auto" or custom)
+
+**Adding New Attributes:**
+1. Pass new env var in dclaude script via `exec_env_args+=(-e "_DCLAUDE_NEWVAR=value")`
+2. Update `.tmux.conf` status-left/right with: `#[fg=#D97757]label: #[fg=terminal]#(printenv _DCLAUDE_NEWVAR || echo '?')`
+3. Use `•` separator between attributes in same section
+4. Rebuild image (`.tmux.conf` is baked in)
+
 ### Session Lifecycle
 1. `dclaude` starts → Creates new tmux session → Runs Claude
 2. Claude exits → Tmux session ends automatically
@@ -625,6 +660,27 @@ make push            # Push to registries (requires auth)
 DCLAUDE_DEBUG=true dclaude    # Enable debug output
 make verify                    # Run installation verification
 ```
+
+### User Shortcuts
+
+When the user asks to "kill dclaudes" or "kill dclaude instances":
+- Stop and remove all dclaude containers
+- Do NOT remove volumes (preserves config and cache)
+- Only remove volumes if explicitly asked
+
+```bash
+docker ps -a --filter "name=dclaude" -q | xargs -r docker rm -f
+```
+
+### Iterative Development Workflow
+
+When working iteratively on dclaude changes (especially `.tmux.conf`, `Dockerfile`, `docker-entrypoint.sh`):
+1. Make the change
+2. Rebuild the image (`docker build -t alanbem/dclaude:local .`)
+3. **Automatically kill dclaudes** - don't wait for user to ask
+4. User can then test immediately
+
+This speeds up the feedback loop since old containers use the old image.
 
 ## References
 - Full user documentation: See README.md

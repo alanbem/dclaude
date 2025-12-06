@@ -1137,6 +1137,10 @@ main() {
                 [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
                 [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
                 [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
+                # Internal env vars for tmux status bar display
+                exec_env_args+=(-e "_DCLAUDE_NET=${network_mode}")
+                exec_env_args+=(-e "_DCLAUDE_TAG=${DCLAUDE_TAG:-latest}")
+                exec_env_args+=(-e "_DCLAUDE_SESSION=${DCLAUDE_TMUX_SESSION:-auto}")
 
                 debug "Creating new tmux session running Claude"
                 debug "Claude args count: ${#claude_args[@]}, user args: $*"
@@ -1290,6 +1294,10 @@ main() {
             [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
             [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
             [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
+            # Internal env vars for tmux status bar display
+            exec_env_args+=(-e "_DCLAUDE_NET=${network_mode}")
+            exec_env_args+=(-e "_DCLAUDE_TAG=${DCLAUDE_TAG:-latest}")
+            exec_env_args+=(-e "_DCLAUDE_SESSION=${DCLAUDE_TMUX_SESSION:-auto}")
 
             debug "Creating new tmux session running Claude"
             debug "Claude args count: ${#claude_args[@]}, user args: $*"
