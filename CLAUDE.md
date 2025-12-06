@@ -308,6 +308,19 @@ General guidelines:
 - **dclaude script changes**: Test on multiple platforms if possible
 - **Documentation**: User-facing docs in README.md, technical context here
 
+### Git Workflow
+
+**Branch Policy:**
+- All development work must be done on feature branches
+- Never commit directly to `main`
+- Branch naming: `feat/description`, `fix/description`, `docs/description`
+
+**Push Policy:**
+- Do NOT push until the user explicitly asks
+- Each "push" request is a one-time approval only
+- After pushing, wait for explicit approval before pushing again
+- When user says "merge and push" - merge to main, push, then delete feature branch
+
 ### SSH Authentication System
 
 The `handle_ssh_auth()` function provides flexible SSH authentication via `DCLAUDE_GIT_AUTH` environment variable.
