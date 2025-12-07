@@ -20,6 +20,7 @@ Run Claude Code CLI in Docker - no local installation needed. Full MCP support, 
 - SSH keys and git config just work
 - Install tools with Homebrew - they persist across sessions
 - Same experience on Linux, macOS, and Windows
+- **Safer `--dangerously-skip-permissions`** - container isolation means Claude can only access your project, not your whole system
 
 ## Quick Start
 
@@ -57,7 +58,6 @@ dclaude --version
 dclaude -p "explain this code"
 dclaude --model sonnet
 dclaude --resume
-dclaude --dangerously-skip-permissions
 
 # Execute commands in the container
 dclaude exec npm install
