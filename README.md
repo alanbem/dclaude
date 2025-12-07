@@ -30,23 +30,15 @@ npm install -g @alanbem/dclaude
 dclaude
 ```
 
-### Build from source
+### Install from source
 
 ```bash
-# Clone somewhere central
+# Clone and install
 git clone https://github.com/alanbem/dclaude.git ~/tools/dclaude
-cd ~/tools/dclaude
-
-# Build the image
-docker build -t alanbem/dclaude:local docker
-
-# Install globally (choose one)
-sudo make install                           # Copies to /usr/local/bin
-# or
 sudo ln -s ~/tools/dclaude/dclaude /usr/local/bin/dclaude
 
-# Use the local image
-DCLAUDE_TAG=local dclaude
+# Run (pulls image from Docker Hub automatically)
+dclaude
 ```
 
 ## Basic Usage
@@ -278,15 +270,17 @@ dclaude exec brew install <tool>  # This persists
 
 ## Development
 
+Want to modify dclaude? Build and test locally:
+
 ```bash
-# Build locally
-make build
+# Build local image
+make build                    # Creates alanbem/dclaude:local
 
 # Test
 make test
 
-# Use local image
-DCLAUDE_TAG=local ./dclaude
+# Use your local image
+DCLAUDE_TAG=local dclaude
 ```
 
 ## Contributing
