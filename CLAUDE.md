@@ -338,10 +338,7 @@ General guidelines:
 - Update Summary section when scope changes
 - Keep checkboxes current: mark complete when done, add new ones for new scope, remove cancelled items
 - Update feature tables/lists when implementation changes
-- Update PR description using: `gh pr edit <number> --body "$(cat <<'EOF'
-<new body content>
-EOF
-)"`
+- Update PR description using: `gh pr edit <number> --body "new content"` or `gh pr edit <number> --body-file -` with stdin
 
 ### SSH Authentication System
 

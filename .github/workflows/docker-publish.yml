@@ -75,7 +75,7 @@ jobs:
             VERSION=${{ steps.version.outputs.version }}
 
       - name: Scan for vulnerabilities (console output)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:scan
           format: 'table'
@@ -85,7 +85,7 @@ jobs:
           scanners: 'vuln'
 
       - name: Scan for vulnerabilities (SARIF)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:scan
           format: 'sarif'
@@ -123,6 +123,7 @@ jobs:
 
       - name: Sign image with Cosign
         if: github.event_name != 'pull_request'
+        timeout-minutes: 5
         run: |
           cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
 

@@ -50,6 +50,9 @@ credentials.json
 secrets.json
 *secret*
 *credential*
+.git-credentials
+.netrc
+.ssh/
 
 # Test artifacts
 artifacts/
