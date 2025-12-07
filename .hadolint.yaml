@@ -14,6 +14,9 @@ ignored:
   # Using latest tag is intentional for Claude CLI to get updates
   - DL3016  # Pin versions in npm install
 
+  # Entrypoint starts as root for permission setup, then uses gosu to switch to claude user
+  - DL3002  # Last USER should not be root
+
 trustedRegistries:
   - docker.io
   - ghcr.io
