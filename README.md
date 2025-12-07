@@ -156,6 +156,21 @@ DCLAUDE_MOUNT_CONFIGS=true dclaude
 
 This mounts (read-only): `.docker/`, `.gitconfig`, `.config/gh/`, `.npmrc`
 
+### System Context
+
+dclaude automatically tells Claude about its container environment so it can give better suggestions:
+
+- **Network mode** - Whether `localhost` works or needs `host.docker.internal`
+- **Docker access** - Whether Docker commands are available
+- **SSH auth method** - How git authentication is configured
+- **Path mirroring** - That file paths match the host
+
+This helps Claude understand its environment without you explaining it. Disable if needed:
+
+```bash
+DCLAUDE_SYSTEM_CONTEXT=false dclaude
+```
+
 ## Environment Variables
 
 | Variable | Default | Description |
