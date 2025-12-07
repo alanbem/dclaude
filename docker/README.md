@@ -35,7 +35,7 @@ Docker image for [dclaude](https://github.com/alanbem/dclaude) - Dockerized Clau
 
 ## Documentation
 
-Full usage documentation: **https://github.com/alanbem/dclaude**
+Full usage documentation: **[github.com/alanbem/dclaude](https://github.com/alanbem/dclaude)**
 
 ## License
 
