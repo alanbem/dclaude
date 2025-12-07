@@ -9,8 +9,11 @@ ARG VERSION=0.0.1
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Use bash with pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Install essential packages
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     # Core utilities
     bash \
     curl \
@@ -148,9 +151,9 @@ USER root
 # Declare volumes for persistent data
 VOLUME ["/home/claude/.claude"]
 
-# Copy entrypoint script and tmux config
-COPY --chown=claude:claude docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY --chown=claude:claude .tmux.conf /home/claude/.tmux.conf
+# Copy entrypoint script and tmux config (paths mirror image structure)
+COPY --chown=claude:claude usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --chown=claude:claude home/claude/.tmux.conf /home/claude/.tmux.conf
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Set working directory to workspace

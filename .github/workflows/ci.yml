@@ -26,7 +26,7 @@ jobs:
       - name: Lint Dockerfile with Hadolint
         uses: hadolint/hadolint-action@v3.3.0
         with:
-          dockerfile: Dockerfile
+          dockerfile: docker/Dockerfile
           failure-threshold: error
 
       - name: Lint shell scripts with ShellCheck
@@ -70,6 +70,7 @@ jobs:
         if: always()
         with:
           sarif_file: semgrep.sarif
+          category: semgrep
 
   build-and-scan:
     name: Build and Scan
@@ -99,7 +100,7 @@ jobs:
       - name: Build image for scanning
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: docker
           load: true
           tags: ${{ env.IMAGE_NAME }}:scan
           cache-from: type=gha
@@ -133,6 +134,7 @@ jobs:
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
+          category: trivy
 
   publish-docker:
     name: Publish Docker
@@ -187,7 +189,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: docker
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -214,7 +216,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ env.IMAGE_NAME }}
           short-description: "Dockerized Claude Code CLI with MCP support"
-          readme-filepath: ./README.md
+          readme-filepath: ./docker/README.md
 
   publish-npm:
     name: Publish NPM

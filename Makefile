@@ -15,7 +15,7 @@ help:
 
 # Build Docker image
 build:
-	docker build -t alanbem/dclaude:local .
+	docker build -t alanbem/dclaude:local docker
 	@echo "✓ Docker image built: alanbem/dclaude:local"
 
 # Run tests
@@ -73,7 +73,7 @@ release:
 .PHONY: dev-build dev-run
 
 dev-build:
-	docker build -t alanbem/dclaude:dev .
+	docker build -t alanbem/dclaude:dev docker
 
 dev-run:
 	DCLAUDE_TAG=dev ./dclaude

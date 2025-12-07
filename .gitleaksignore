@@ -1,0 +1,5 @@
+# Gitleaks baseline - known false positives
+# https://github.com/gitleaks/gitleaks#baseline
+
+# False positive: "DCLAUDE_SSH=key-mount" detected as generic-api-key
+c6a3ee8e0b687eedc1c0feb92c3a6f2903ba2879:dclaude:generic-api-key:498
