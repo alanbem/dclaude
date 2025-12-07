@@ -39,3 +39,18 @@ dclaude
 # Environment files
 .env
 .env.*
+
+# Secrets and credentials
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+credentials.json
+secrets.json
+*secret*
+*credential*
+
+# Test artifacts
+artifacts/
+tests/
