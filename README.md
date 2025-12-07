@@ -30,17 +30,7 @@ npm install -g @alanbem/dclaude
 dclaude
 ```
 
-### Or use Docker directly
-
-```bash
-docker run --rm -it \
-  -v "$(pwd):$(pwd)" \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -w "$(pwd)" \
-  alanbem/dclaude
-```
-
-### Or build from source
+### Build from source
 
 ```bash
 git clone https://github.com/alanbem/dclaude.git
