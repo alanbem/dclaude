@@ -721,6 +721,15 @@ The project uses several linters (Hadolint, ShellCheck, Semgrep) that may produc
 - `.trivyignore` - Vulnerability exceptions (with CVE documentation)
 
 ## Review Requirements
+
+### Addressing PR Feedback
+When asked to address PR reviews:
+1. Read ALL comments on the PR - both formal reviews and regular comments can contain actionable feedback (bots like CodeRabbit post suggestions as comments, not reviews)
+2. Do NOT blindly apply suggested changes - evaluate each suggestion in context
+3. If a suggestion seems wrong, unnecessary, or you're unsure about it, ask the user before making changes
+4. Some suggestions may conflict with project conventions or introduce issues - use judgment
+
+### Code Review Checklist
 When code changes are made:
 1. Security implications of Docker socket access
 2. Cross-platform compatibility (Linux/macOS/Windows)
