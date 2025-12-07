@@ -1,0 +1,22 @@
+# Trivy vulnerability ignore file
+# https://aquasecurity.github.io/trivy/latest/docs/configuration/filtering/#by-finding-ids
+#
+# Add CVE IDs here to acknowledge and suppress known vulnerabilities.
+# Each entry should be documented with a reason.
+
+# GitHub CLI - installed via apt, can't control Go binary version
+# https://github.com/cli/cli/security/advisories/GHSA-p2h2-3vg9-6648
+CVE-2024-52308
+
+# Go stdlib vulnerability in binaries installed via apt
+# Affects gh, docker CLI, and other Go binaries
+CVE-2025-61729
+
+# Sigstore timestamp-authority - embedded in Go binaries
+CVE-2025-66564
+
+# NOTE: Secret scanning is disabled in the workflow (scanners: 'vuln')
+# because Homebrew's portable-ruby includes test/development keys that
+# trigger false positives. The entries below are kept for documentation.
+# private-key
+# AsymmetricPrivateKey

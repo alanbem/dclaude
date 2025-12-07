@@ -1,0 +1,22 @@
+# Hadolint configuration
+# https://github.com/hadolint/hadolint#configure
+
+failure-threshold: error
+
+ignored:
+  # We intentionally don't pin apt package versions to get security updates
+  - DL3008  # Pin versions in apt-get install
+  - DL3009  # Delete apt-get lists after installing
+
+  # We use pipe with curl for installation scripts (node, brew, docker)
+  - DL4006  # Set SHELL option -o pipefail
+
+  # Using latest tag is intentional for Claude CLI to get updates
+  - DL3016  # Pin versions in npm install
+
+  # Entrypoint starts as root for permission setup, then uses gosu to switch to claude user
+  - DL3002  # Last USER should not be root
+
+trustedRegistries:
+  - docker.io
+  - ghcr.io

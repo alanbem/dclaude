@@ -310,16 +310,35 @@ General guidelines:
 
 ### Git Workflow
 
+**Branch Protection:**
+- `main` branch is protected - direct pushes are blocked
+- All changes require a Pull Request
+- CI must pass before merge (build-and-push workflow)
+
 **Branch Policy:**
 - All development work must be done on feature branches
-- Never commit directly to `main`
 - Branch naming: `feat/description`, `fix/description`, `docs/description`
 
+**PR Workflow:**
+1. Create feature branch: `git checkout -b feat/my-feature`
+2. Make changes and commit
+3. Push branch: `git push -u origin feat/my-feature`
+4. Create PR: `gh pr create`
+5. Wait for CI to pass
+6. Merge PR: `gh pr merge --squash --delete-branch`
+
 **Push Policy:**
-- Do NOT push until the user explicitly asks
-- Each "push" request is a one-time approval only
+- Do NOT push or create PRs until the user explicitly asks
+- Each "push" or "create PR" request is a one-time approval only
 - After pushing, wait for explicit approval before pushing again
-- When user says "merge and push" - merge to main, push, then delete feature branch
+- When user says "merge" - use `gh pr merge --squash --delete-branch` to merge and clean up
+
+**PR Description Management:**
+- Keep PR description up to date as work progresses
+- Update Summary section when scope changes
+- Keep checkboxes current: mark complete when done, add new ones for new scope, remove cancelled items
+- Update feature tables/lists when implementation changes
+- Update PR description using: `gh pr edit <number> --body "new content"` or `gh pr edit <number> --body-file -` with stdin
 
 ### SSH Authentication System
 
@@ -650,6 +669,56 @@ SSH password is hardcoded (`claude:claude`) - suitable for local development onl
 - Non-root user with docker group membership only
 - Config mounts are read-only to prevent modification
 - Config mounting is opt-in for security
+
+### Docker Scout Security Scanning
+
+Run Docker Scout periodically to check for vulnerabilities in the published image:
+
+**When to scan:**
+- When creating a new feature branch (check base branch security status)
+- Before creating a PR (ensure no new vulnerabilities introduced)
+- After merging to main (verify production image security)
+- Periodically as part of maintenance
+
+**Commands:**
+```bash
+# Quick overview of vulnerabilities
+docker scout quickview alanbem/dclaude:latest
+
+# Detailed CVE list (critical and high severity)
+docker scout cves alanbem/dclaude:latest --only-severity critical,high
+
+# Compare two images (e.g., before/after a change)
+docker scout compare alanbem/dclaude:latest alanbem/dclaude:main
+```
+
+**What to look for:**
+- Critical and High severity vulnerabilities that have fixes available
+- New vulnerabilities introduced by dependency updates
+- Vulnerabilities in packages we directly install vs. transitive dependencies
+
+**Note:** Many vulnerabilities come from apt-installed packages (Go binaries like gh, docker CLI) or system packages (linux kernel, glibc). These often can't be fixed without upstream updates.
+
+## CI/CD Linting Guidelines
+
+The project uses several linters (Hadolint, ShellCheck, Semgrep) that may produce warnings and errors.
+
+**Philosophy: Fix first, suppress last**
+
+1. **Always try to fix warnings** - Don't just suppress them. Investigate the root cause.
+2. **Understand why** - Before ignoring a rule, understand what it's protecting against.
+3. **Document exceptions** - If suppression is truly necessary, add a comment explaining why.
+4. **Suppress narrowly** - Prefer inline suppressions over global ignores when possible.
+
+**When suppression is acceptable:**
+- The warning is a false positive for our specific use case
+- Fixing would break intended functionality (e.g., DL3002 - we need root for entrypoint)
+- The fix is not possible due to upstream constraints (e.g., apt-installed packages)
+
+**Configuration files:**
+- `.hadolint.yaml` - Dockerfile linting rules
+- `.shellcheckrc` - Shell script linting (if created)
+- `.trivyignore` - Vulnerability exceptions (with CVE documentation)
 
 ## Review Requirements
 When code changes are made:
