@@ -9,6 +9,9 @@ ARG VERSION=0.0.1
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Use bash with pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Install essential packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Core utilities
