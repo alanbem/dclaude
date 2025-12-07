@@ -63,7 +63,7 @@ dclaude exec brew install ripgrep
 
 dclaude creates a container that mirrors your host environment:
 
-1. **Path Mirroring**: Your current directory is mounted at the *exact same path*
+1. **Path Mirroring**: Your current directory is mounted at the *same path*
    - On host: `/Users/alice/projects/myapp`
    - In container: `/Users/alice/projects/myapp`
    - All your file paths just work
@@ -252,7 +252,7 @@ dclaude exec brew install <tool>  # This persists
 
 ## Project Structure
 
-```
+```text
 .
 ├── dclaude                 # Launcher script (runs on host)
 ├── docker/
@@ -285,7 +285,7 @@ DCLAUDE_TAG=local dclaude
 
 ## Contributing
 
-Contributions welcome! Please feel free to submit a Pull Request.
+Contributions welcome! Submit a Pull Request.
 
 ## License
 
