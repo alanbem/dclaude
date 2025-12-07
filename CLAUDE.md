@@ -670,6 +670,35 @@ SSH password is hardcoded (`claude:claude`) - suitable for local development onl
 - Config mounts are read-only to prevent modification
 - Config mounting is opt-in for security
 
+### Docker Scout Security Scanning
+
+Run Docker Scout periodically to check for vulnerabilities in the published image:
+
+**When to scan:**
+- When creating a new feature branch (check base branch security status)
+- Before creating a PR (ensure no new vulnerabilities introduced)
+- After merging to main (verify production image security)
+- Periodically as part of maintenance
+
+**Commands:**
+```bash
+# Quick overview of vulnerabilities
+docker scout quickview alanbem/dclaude:latest
+
+# Detailed CVE list (critical and high severity)
+docker scout cves alanbem/dclaude:latest --only-severity critical,high
+
+# Compare two images (e.g., before/after a change)
+docker scout compare alanbem/dclaude:latest alanbem/dclaude:main
+```
+
+**What to look for:**
+- Critical and High severity vulnerabilities that have fixes available
+- New vulnerabilities introduced by dependency updates
+- Vulnerabilities in packages we directly install vs. transitive dependencies
+
+**Note:** Many vulnerabilities come from apt-installed packages (Go binaries like gh, docker CLI) or system packages (linux kernel, glibc). These often can't be fixed without upstream updates.
+
 ## Review Requirements
 When code changes are made:
 1. Security implications of Docker socket access
