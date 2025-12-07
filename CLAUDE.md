@@ -122,9 +122,9 @@ The dclaude script uses a strict hierarchy for output messages to provide predic
 ## Critical Technical Context
 
 ### Architecture Components
-- **Dockerfile**: Ubuntu 24.04 base, non-root `claude` user, includes Docker CLI/Compose, GitHub CLI, Node.js, Python, socat, gosu, tini, tmux
+- **docker/Dockerfile**: Ubuntu 24.04 base, non-root `claude` user, includes Docker CLI/Compose, GitHub CLI, Node.js, Python, socat, gosu, tini, tmux
 - **tini**: Minimal init system (PID 1) that reaps zombie processes created by docker exec commands
-- **docker-entrypoint.sh**: Entrypoint script that sets up SSH agent proxy when needed (socat bridge for macOS permissions)
+- **docker/entrypoint.sh**: Entrypoint script that sets up SSH agent proxy when needed (socat bridge for macOS permissions)
 - **dclaude script**: Launcher handling platform detection, volume management, path mirroring, config mounting
 - **Docker volumes**: `dclaude-config`, `dclaude-cache`, `dclaude-claude` for persistent data
 - **Config mounting**: Optional read-only mounting of host configs (SSH, Docker, Git, GitHub CLI, NPM)
@@ -189,8 +189,8 @@ Persistent containers run `tini` as PID 1, which serves as a minimal init system
 - Minimal overhead (~10KB binary)
 
 **Implementation:**
-- Dockerfile: Installs `tini` package
-- Dockerfile ENTRYPOINT: Wraps entrypoint with tini for ephemeral containers
+- docker/Dockerfile: Installs `tini` package
+- docker/Dockerfile ENTRYPOINT: Wraps entrypoint with tini for ephemeral containers
 - dclaude script: Uses `--entrypoint /usr/bin/tini` for persistent containers
 - Result: Clean process tree with no zombie accumulation
 
@@ -213,8 +213,8 @@ Claude Code stores its configuration in `~/.claude.json`. Since this directory i
 - Handles atomic writes correctly (watches for `close_write` and `moved_to` events)
 
 **Implementation:**
-- Dockerfile: Installs `inotify-tools` package
-- docker-entrypoint.sh: Background process watches `/home/claude/.claude.json` for changes
+- docker/Dockerfile: Installs `inotify-tools` package
+- docker/entrypoint.sh: Background process watches `/home/claude/.claude.json` for changes
 - On file modification: Immediately copies to volume at `/home/claude/.claude/.claude.json`
 - Handles editor atomic writes (write to temp file, then move to final location)
 
@@ -289,13 +289,13 @@ DCLAUDE_TAG=local ./dclaude --version
 ### Making Changes
 
 **Files requiring image rebuild** (baked into Docker image):
-- `Dockerfile` - Container definition
-- `docker-entrypoint.sh` - Startup script
-- `.tmux.conf` - Tmux configuration
+- `docker/Dockerfile` - Container definition
+- `docker/usr/local/bin/docker-entrypoint.sh` - Startup script
+- `docker/home/claude/.tmux.conf` - Tmux configuration
 
 After changing these, rebuild and test:
 ```bash
-docker build -t alanbem/dclaude:local .
+docker build -t alanbem/dclaude:local docker
 DCLAUDE_TAG=local ./dclaude
 ```
 
@@ -304,7 +304,7 @@ DCLAUDE_TAG=local ./dclaude
 - `README.md`, `CLAUDE.md` - Documentation
 
 General guidelines:
-- **Dockerfile changes**: Always test with local build before committing
+- **docker/ changes**: Always test with local build before committing
 - **dclaude script changes**: Test on multiple platforms if possible
 - **Documentation**: User-facing docs in README.md, technical context here
 
@@ -375,7 +375,7 @@ Persistent containers (`DCLAUDE_RM=false`, now the default) use tmux for session
 - **Custom**: Set via `DCLAUDE_TMUX_SESSION` environment variable (e.g., `claude-architect`)
 - **Multiple sessions**: Multiple Claude instances can run concurrently in the same container
 
-### Critical Tmux Configuration (.tmux.conf)
+### Critical Tmux Configuration (docker/home/claude/.tmux.conf)
 
 **IMPORTANT BUG FIX**: The following settings are critical for proper multi-session behavior:
 
@@ -425,9 +425,9 @@ These are passed via `docker exec -e` when creating tmux sessions:
 
 **Adding New Attributes:**
 1. Pass new env var in dclaude script via `exec_env_args+=(-e "_DCLAUDE_NEWVAR=value")`
-2. Update `.tmux.conf` status-left/right with: `#[fg=#D97757]label: #[fg=terminal]#(printenv _DCLAUDE_NEWVAR || echo '?')`
+2. Update `docker/home/claude/.tmux.conf` status-left/right with: `#[fg=#D97757]label: #[fg=terminal]#(printenv _DCLAUDE_NEWVAR || echo '?')`
 3. Use `•` separator between attributes in same section
-4. Rebuild image (`.tmux.conf` is baked in)
+4. Rebuild image (tmux config is baked in)
 
 ### Session Lifecycle
 1. `dclaude` starts → Creates new tmux session → Runs Claude
@@ -758,9 +758,9 @@ docker ps -a --filter "name=dclaude" -q | xargs -r docker rm -f
 
 ### Iterative Development Workflow
 
-When working iteratively on dclaude changes (especially `.tmux.conf`, `Dockerfile`, `docker-entrypoint.sh`):
+When working iteratively on dclaude changes (especially files in `docker/`):
 1. Make the change
-2. Rebuild the image (`docker build -t alanbem/dclaude:local .`)
+2. Rebuild the image (`docker build -t alanbem/dclaude:local docker`)
 3. **Automatically kill dclaudes** - don't wait for user to ask
 4. User can then test immediately
 

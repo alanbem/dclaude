@@ -148,9 +148,9 @@ USER root
 # Declare volumes for persistent data
 VOLUME ["/home/claude/.claude"]
 
-# Copy entrypoint script and tmux config
-COPY --chown=claude:claude docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY --chown=claude:claude .tmux.conf /home/claude/.tmux.conf
+# Copy entrypoint script and tmux config (paths mirror image structure)
+COPY --chown=claude:claude usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --chown=claude:claude home/claude/.tmux.conf /home/claude/.tmux.conf
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Set working directory to workspace
