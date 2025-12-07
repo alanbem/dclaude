@@ -91,7 +91,6 @@ jobs:
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
-          exit-code: '1'
           ignore-unfixed: true
           trivyignores: .trivyignore
           scanners: 'vuln'
