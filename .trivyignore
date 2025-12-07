@@ -3,10 +3,18 @@
 #
 # Add CVE IDs here to acknowledge and suppress known vulnerabilities.
 # Each entry should be documented with a reason.
-#
-# Format:
-#   CVE-XXXX-XXXXX  # reason for ignoring
-#
-# Example:
-#   CVE-2023-12345  # No fix available for Ubuntu 24.04, low exploitability
 
+# GitHub CLI - installed via apt, can't control Go binary version
+# https://github.com/cli/cli/security/advisories/GHSA-p2h2-3vg9-6648
+CVE-2024-52308
+
+# Go stdlib vulnerability in binaries installed via apt
+# Affects gh, docker CLI, and other Go binaries
+CVE-2025-61729
+
+# Sigstore timestamp-authority - embedded in Go binaries
+CVE-2025-66564
+
+# Homebrew Ruby private keys - used for development/testing, not actual secrets
+# These are false positives from Homebrew's portable-ruby installation
+private-key
