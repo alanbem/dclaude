@@ -1,0 +1,19 @@
+# Hadolint configuration
+# https://github.com/hadolint/hadolint#configure
+
+failure-threshold: error
+
+ignored:
+  # We intentionally don't pin apt package versions to get security updates
+  - DL3008  # Pin versions in apt-get install
+  - DL3009  # Delete apt-get lists after installing
+
+  # We use pipe with curl for installation scripts (node, brew, docker)
+  - DL4006  # Set SHELL option -o pipefail
+
+  # Using latest tag is intentional for Claude CLI to get updates
+  - DL3016  # Pin versions in npm install
+
+trustedRegistries:
+  - docker.io
+  - ghcr.io
