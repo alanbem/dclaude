@@ -279,7 +279,7 @@ See [tasks/CLAUDE.md](tasks/CLAUDE.md) for complete task management workflow, re
 ### Testing Commands
 ```bash
 # Local build and test
-docker build -t alanbem/dclaude:local .
+docker build -t alanbem/dclaude:local docker
 DCLAUDE_TAG=local ./dclaude --version
 
 # Verify Docker access from within container

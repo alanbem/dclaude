@@ -10,7 +10,7 @@ ARG VERSION=0.0.1
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install essential packages
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     # Core utilities
     bash \
     curl \
