@@ -206,7 +206,10 @@ jobs:
         run: |
           cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
 
+      # TODO: Fix DOCKERHUB_TOKEN permissions to allow description updates
+      # Current token only has push access, needs "Read, Write, Delete" scope
       - name: Update Docker Hub description
+        continue-on-error: true
         if: github.ref == 'refs/heads/main'
         uses: peter-evans/dockerhub-description@v5
         with:
