@@ -699,6 +699,27 @@ docker scout compare alanbem/dclaude:latest alanbem/dclaude:main
 
 **Note:** Many vulnerabilities come from apt-installed packages (Go binaries like gh, docker CLI) or system packages (linux kernel, glibc). These often can't be fixed without upstream updates.
 
+## CI/CD Linting Guidelines
+
+The project uses several linters (Hadolint, ShellCheck, Semgrep) that may produce warnings and errors.
+
+**Philosophy: Fix first, suppress last**
+
+1. **Always try to fix warnings** - Don't just suppress them. Investigate the root cause.
+2. **Understand why** - Before ignoring a rule, understand what it's protecting against.
+3. **Document exceptions** - If suppression is truly necessary, add a comment explaining why.
+4. **Suppress narrowly** - Prefer inline suppressions over global ignores when possible.
+
+**When suppression is acceptable:**
+- The warning is a false positive for our specific use case
+- Fixing would break intended functionality (e.g., DL3002 - we need root for entrypoint)
+- The fix is not possible due to upstream constraints (e.g., apt-installed packages)
+
+**Configuration files:**
+- `.hadolint.yaml` - Dockerfile linting rules
+- `.shellcheckrc` - Shell script linting (if created)
+- `.trivyignore` - Vulnerability exceptions (with CVE documentation)
+
 ## Review Requirements
 When code changes are made:
 1. Security implications of Docker socket access
