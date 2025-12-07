@@ -33,11 +33,20 @@ dclaude
 ### Build from source
 
 ```bash
-git clone https://github.com/alanbem/dclaude.git
-cd dclaude
+# Clone somewhere central
+git clone https://github.com/alanbem/dclaude.git ~/tools/dclaude
+cd ~/tools/dclaude
+
+# Build the image
 docker build -t alanbem/dclaude:local docker
-chmod +x dclaude
-./dclaude
+
+# Install globally (choose one)
+sudo make install                           # Copies to /usr/local/bin
+# or
+sudo ln -s ~/tools/dclaude/dclaude /usr/local/bin/dclaude
+
+# Use the local image
+DCLAUDE_TAG=local dclaude
 ```
 
 ## Basic Usage
