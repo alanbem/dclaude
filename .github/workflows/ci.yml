@@ -70,6 +70,7 @@ jobs:
         if: always()
         with:
           sarif_file: semgrep.sarif
+          category: semgrep
 
   build-and-scan:
     name: Build and Scan
@@ -133,6 +134,7 @@ jobs:
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
+          category: trivy
 
   publish-docker:
     name: Publish Docker
