@@ -21,10 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Lint Dockerfile with Hadolint
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: Dockerfile
           failure-threshold: error
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -60,7 +60,7 @@ jobs:
       image: semgrep/semgrep:1.144.0
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run Semgrep
         run: semgrep scan --config auto --sarif --output semgrep.sarif
@@ -79,7 +79,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -108,7 +108,7 @@ jobs:
             VERSION=${{ steps.version.outputs.version }}
 
       - name: Scan for vulnerabilities (console output)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           image-ref: ${{ env.IMAGE_NAME }}:scan
           format: 'table'
@@ -118,7 +118,7 @@ jobs:
           scanners: 'vuln'
 
       - name: Scan for vulnerabilities (SARIF)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           image-ref: ${{ env.IMAGE_NAME }}:scan
           format: 'sarif'
@@ -145,7 +145,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -208,7 +208,7 @@ jobs:
 
       - name: Update Docker Hub description
         if: github.ref == 'refs/heads/main'
-        uses: peter-evans/dockerhub-description@v3
+        uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
