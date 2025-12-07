@@ -57,6 +57,7 @@ dclaude --version
 dclaude -p "explain this code"
 dclaude --model sonnet
 dclaude --resume
+dclaude --dangerously-skip-permissions
 
 # Execute commands in the container
 dclaude exec npm install
