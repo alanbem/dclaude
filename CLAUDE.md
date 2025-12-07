@@ -333,6 +333,16 @@ General guidelines:
 - After pushing, wait for explicit approval before pushing again
 - When user says "merge" - use `gh pr merge --squash --delete-branch` to merge and clean up
 
+**PR Description Management:**
+- Keep PR description checkboxes up to date as work progresses
+- Mark checkboxes as complete when features are implemented and working
+- Add new checkboxes when scope expands during implementation
+- Remove checkboxes for features that are no longer planned
+- Update PR description using: `gh pr edit <number> --body "$(cat <<'EOF'
+<new body content>
+EOF
+)"`
+
 ### SSH Authentication System
 
 The `handle_ssh_auth()` function provides flexible SSH authentication via `DCLAUDE_GIT_AUTH` environment variable.
