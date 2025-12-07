@@ -74,7 +74,16 @@ jobs:
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
 
-      - name: Scan for vulnerabilities
+      - name: Scan for vulnerabilities (console output)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:scan
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+
+      - name: Scan for vulnerabilities (SARIF)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.IMAGE_NAME }}:scan
