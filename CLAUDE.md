@@ -124,7 +124,7 @@ The dclaude script uses a strict hierarchy for output messages to provide predic
 ### Architecture Components
 - **docker/Dockerfile**: Ubuntu 24.04 base, non-root `claude` user, includes Docker CLI/Compose, GitHub CLI, Node.js, Python, socat, gosu, tini, tmux
 - **tini**: Minimal init system (PID 1) that reaps zombie processes created by docker exec commands
-- **docker/entrypoint.sh**: Entrypoint script that sets up SSH agent proxy when needed (socat bridge for macOS permissions)
+- **docker/usr/local/bin/docker-entrypoint.sh**: Entrypoint script that sets up SSH agent proxy when needed (socat bridge for macOS permissions)
 - **dclaude script**: Launcher handling platform detection, volume management, path mirroring, config mounting
 - **Docker volumes**: `dclaude-config`, `dclaude-cache`, `dclaude-claude` for persistent data
 - **Config mounting**: Optional read-only mounting of host configs (SSH, Docker, Git, GitHub CLI, NPM)
@@ -214,7 +214,7 @@ Claude Code stores its configuration in `~/.claude.json`. Since this directory i
 
 **Implementation:**
 - docker/Dockerfile: Installs `inotify-tools` package
-- docker/entrypoint.sh: Background process watches `/home/claude/.claude.json` for changes
+- docker/usr/local/bin/docker-entrypoint.sh: Background process watches `/home/claude/.claude.json` for changes
 - On file modification: Immediately copies to volume at `/home/claude/.claude/.claude.json`
 - Handles editor atomic writes (write to temp file, then move to final location)
 
