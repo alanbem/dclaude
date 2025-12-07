@@ -334,10 +334,10 @@ General guidelines:
 - When user says "merge" - use `gh pr merge --squash --delete-branch` to merge and clean up
 
 **PR Description Management:**
-- Keep PR description checkboxes up to date as work progresses
-- Mark checkboxes as complete when features are implemented and working
-- Add new checkboxes when scope expands during implementation
-- Remove checkboxes for features that are no longer planned
+- Keep PR description up to date as work progresses
+- Update Summary section when scope changes
+- Keep checkboxes current: mark complete when done, add new ones for new scope, remove cancelled items
+- Update feature tables/lists when implementation changes
 - Update PR description using: `gh pr edit <number> --body "$(cat <<'EOF'
 <new body content>
 EOF

@@ -15,7 +15,8 @@ CVE-2025-61729
 # Sigstore timestamp-authority - embedded in Go binaries
 CVE-2025-66564
 
-# Homebrew Ruby private keys - used for development/testing, not actual secrets
-# These are false positives from Homebrew's portable-ruby installation
-private-key
-AsymmetricPrivateKey
+# NOTE: Secret scanning is disabled in the workflow (scanners: 'vuln')
+# because Homebrew's portable-ruby includes test/development keys that
+# trigger false positives. The entries below are kept for documentation.
+# private-key
+# AsymmetricPrivateKey
