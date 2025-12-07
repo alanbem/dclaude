@@ -1,68 +1,38 @@
-# Dockerized Claude Code
+# dclaude
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-![Status: Development](https://img.shields.io/badge/Status-Development-yellow)
-[![Docker](https://img.shields.io/badge/Docker-Ready-blue)](https://www.docker.com/)
+[![Docker Hub](https://img.shields.io/docker/v/alanbem/dclaude?label=Docker%20Hub)](https://hub.docker.com/r/alanbem/dclaude)
+[![npm](https://img.shields.io/npm/v/@alanbem/dclaude)](https://www.npmjs.com/package/@alanbem/dclaude)
 
-Run Claude Code CLI in a Docker container with full MCP (Model Context Protocol) support and host environment emulation.
+Run Claude Code CLI in Docker - no local installation needed. Full MCP support, persistent sessions, and seamless host integration.
 
-> **🚧 Development Status**: This project is in active development. NPM and Docker Hub publishing coming soon. Currently requires local building.
+## Why dclaude?
 
-## Features
+**Claude Code CLI is powerful, but installing it locally means:**
+- Node.js version conflicts
+- Global npm packages cluttering your system
+- MCP servers needing specific Python/Node setups
+- Different behavior across machines
 
-- 🐳 **Fully Containerized**: Run Claude CLI without local installation
-- 🔧 **Docker Access**: Mount Docker socket for container management from Claude
-- 📁 **Path Mirroring**: Seamless file access between host and container
-- 🔌 **MCP Support**: Full Node.js and Python environments for MCP servers
-- 🔒 **Isolated Environment**: Persistent data in Docker volumes
-- 🌍 **Cross-Platform**: Works on Linux, macOS, and Windows (with Docker)
-- 🚀 **Auto-Updates**: Automatic image updates on launch
-- 🌐 **Smart Networking**: Auto-detects optimal networking mode for localhost access
-- 🔑 **Config Mounting**: Optional mounting of host SSH keys, Git config, and tool authentication
-- 🍺 **Homebrew Support**: Full Homebrew/Linuxbrew integration for package management
-- 💾 **Persistent Containers**: Optional container persistence for development environments
-- 🔌 **Direct Shell Access**: Execute commands directly in containers via exec subcommand
-
-## Prerequisites
-
-- Docker Desktop installed and running (Docker Engine 20.10+ recommended)
-- Git (for cloning the repository)
-- Claude API key (from [Anthropic Console](https://console.anthropic.com/))
+**dclaude solves this by running Claude in a container that feels native:**
+- Your files appear at the same paths (no `/app` or `/workspace` confusion)
+- Docker commands work (socket is mounted)
+- SSH keys and git config just work
+- Install tools with Homebrew - they persist across sessions
+- Same experience on Linux, macOS, and Windows
 
 ## Quick Start
 
-### Option 1: Build Locally (Currently Required)
+### Install via NPM (Recommended)
 
 ```bash
-# Clone the repository
-git clone https://github.com/alanbem/dclaude.git
-cd dclaude
-
-# Build the Docker image
-docker build -t alanbem/dclaude:latest .
-
-# Make the launcher script executable
-chmod +x dclaude
-
-# Run dclaude
-./dclaude
-
-# (Optional) Install globally
-sudo cp dclaude /usr/local/bin/
-```
-
-### Option 2: Install via NPM (Coming Soon)
-
-```bash
-# Note: Package will be published to NPM registry soon
 npm install -g @alanbem/dclaude
 dclaude
 ```
 
-### Option 3: Use Docker Directly
+### Or use Docker directly
 
 ```bash
-# After building the image locally
 docker run --rm -it \
   -v "$(pwd):$(pwd)" \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -70,1017 +40,267 @@ docker run --rm -it \
   alanbem/dclaude
 ```
 
-## Usage
-
-### Basic Commands
+### Or build from source
 
 ```bash
-# Start Claude interactively (ephemeral)
+git clone https://github.com/alanbem/dclaude.git
+cd dclaude
+docker build -t alanbem/dclaude:local docker
+chmod +x dclaude
+./dclaude
+```
+
+## Basic Usage
+
+```bash
+# Start Claude interactively
 dclaude
 
-# Run Claude with a prompt
+# Run with a prompt
 dclaude "fix the bug in main.js"
 
-# All arguments pass directly to Claude CLI
-dclaude --version  # Shows Claude's version
-dclaude --help     # Shows Claude's help
-dclaude -p "prompt" # Claude's print mode
+# All Claude CLI flags work
+dclaude --version
+dclaude -p "explain this code"
 
-# Enable debug mode
-DCLAUDE_DEBUG=true dclaude
-
-# Skip image updates (faster startup)
-DCLAUDE_NO_UPDATE=true dclaude
-
-# Force specific networking modes via environment
-DCLAUDE_NETWORK=host dclaude   # Force host networking
-DCLAUDE_NETWORK=bridge dclaude # Force bridge networking
+# Execute commands in the container
+dclaude exec npm install
+dclaude exec brew install ripgrep
 ```
 
-### Persistent Containers
+## How It Works
 
-Create containers that persist between sessions:
+dclaude creates a container that mirrors your host environment:
 
+1. **Path Mirroring**: Your current directory is mounted at the *exact same path*
+   - On host: `/Users/alice/projects/myapp`
+   - In container: `/Users/alice/projects/myapp`
+   - All your file paths just work
+
+2. **Docker Access**: The Docker socket is mounted, so Claude can build images, run containers, and manage compose stacks
+
+3. **Persistent Sessions**: Containers persist by default - installed tools and configuration survive across sessions
+
+4. **Smart Networking**: Auto-detects whether host networking is available for localhost access
+
+## Persistent vs Ephemeral Containers
+
+**Persistent (default)** - Container survives between sessions:
 ```bash
-# Create a persistent container
-DCLAUDE_RM=false dclaude
-
-# Reuse the same container (automatically detected)
-DCLAUDE_RM=false dclaude
-
-# Execute commands directly in the container
-dclaude exec                    # Open bash shell
-dclaude exec npm install        # Run npm command
-dclaude exec brew install git   # Install tools with Homebrew
-
-# Back to ephemeral mode (default)
-dclaude
+dclaude                           # Uses existing container or creates new one
+dclaude exec brew install fd      # Install tools - they persist
+dclaude exec                      # Open a shell in the container
 ```
 
-**When to use persistent containers:**
-- Installing tools that should persist (Homebrew packages, global npm modules)
-- Development environments that need setup (databases, services)
-- Faster startup times (no container recreation)
-- Preserving system-level changes
-
-**Ephemeral vs Persistent:**
-- **Ephemeral (default)**: `DCLAUDE_RM=true` - Container removed after exit
-- **Persistent**: `DCLAUDE_RM=false` - Container reused across sessions
-
-**Session Management (Persistent Containers):**
-
-Persistent containers use tmux for transparent session management:
-- Each `dclaude` invocation creates a new tmux session with a unique name
-- Sessions run independently and don't interfere with each other
-- When you exit Claude, the session ends cleanly without switching to other sessions
-- Tmux runs in "transparent mode" - you won't notice it's there
-
-**Tmux Configuration:**
-- **Zero input lag**: `escape-time 0` eliminates keyboard delays
-- **Mouse support**: Native scrollback integration with modern terminals
-- **No prefix key**: Tmux is invisible - use your terminal normally
-- **Session isolation**: Each session is independent (`.tmux.conf`)
-- **Clean exit behavior**: Sessions detach instead of switching when Claude exits
-
-This architecture enables multiple concurrent Claude instances while maintaining a native terminal feel.
-
-### SSH Server for Remote Access
-
-Enable SSH access to the container for remote development tools like JetBrains Gateway, VS Code Remote SSH, or direct SSH/SFTP connections.
-
+**Ephemeral** - Fresh container each time:
 ```bash
-# Start container (SSH port automatically reserved)
-dclaude
-
-# Start SSH server and show connection info
-dclaude ssh
-
-# Stop SSH server
-dclaude ssh --stop
+DCLAUDE_RM=true dclaude          # Container removed after exit
 ```
 
-**How it works:**
-1. When container is created, a random available port is reserved (range: 2222-65000)
-2. Port is stored in container label `dclaude.ssh.port`
-3. `dclaude ssh` reads the port and starts sshd on that port
-4. Works with both host and bridge networking modes
+Use persistent for development (faster startup, tools persist). Use ephemeral for CI/CD or when you want a clean slate.
 
-**Connection details:**
-- Host: `localhost`
-- Port: Shown when running `dclaude ssh`
-- Username: `claude`
-- Password: `claude`
-
-**Use cases:**
-- **JetBrains Gateway** (PhpStorm, IntelliJ, WebStorm, PyCharm, etc.)
-- **VS Code Remote SSH**
-- **Remote debugging**
-- **SFTP file transfer**
-
-**JetBrains Gateway setup:**
-1. Start container: `dclaude`
-2. Start SSH: `dclaude ssh` (note the port shown)
-3. Open JetBrains Gateway → New Connection → SSH
-4. Connect to `localhost:<port>` with username `claude`, password `claude`
-5. Gateway downloads and installs IDE backend automatically
-6. Select your project directory
-
-**Security note:** SSH password is hardcoded (`claude:claude`) - suitable for local development only. For production environments, consider using SSH key authentication.
-
-### Chrome DevTools Integration
-
-Integrate Claude with Chrome DevTools for browser automation and debugging via the Model Context Protocol (MCP).
-
-```bash
-# Launch Chrome with DevTools and create .mcp.json configuration
-dclaude chrome
-
-# Custom debugging port
-dclaude chrome --port=9223
-
-# Just create .mcp.json without launching Chrome
-dclaude chrome --setup-only
-
-# Use different Chrome profile
-DCLAUDE_CHROME_PROFILE=testing dclaude chrome
-```
-
-**How it works:**
-1. `dclaude chrome` auto-detects your Chrome binary
-2. Creates an isolated profile in `.dclaude/chrome/profiles/<profile-name>/`
-3. Creates/updates `.mcp.json` with Chrome MCP server configuration
-4. Launches Chrome with remote debugging enabled (default port: 9222)
-5. Claude can now interact with Chrome via MCP tools
-
-**Chrome capabilities:**
-- List and navigate browser tabs
-- Inspect DOM elements and execute JavaScript
-- Take screenshots and debug web applications
-- Automate browser interactions
-
-**Environment variables:**
-- `DCLAUDE_CHROME_BIN` - Chrome executable path (auto-detected if not set)
-- `DCLAUDE_CHROME_PROFILE` - Profile name (default: `claude`)
-- `DCLAUDE_CHROME_PORT` - Debugging port (default: `9222`)
-- `DCLAUDE_CHROME_FLAGS` - Additional Chrome launch flags
-
-**Requirements:**
-- Host networking mode (automatically used on compatible platforms)
-- Chrome runs on host, Claude in container connects via localhost
-
-**Example workflow:**
-```bash
-# 1. Launch Chrome with DevTools
-dclaude chrome
-
-# 2. Start Claude (will use Chrome MCP automatically)
-dclaude
-
-# 3. Claude can now interact with Chrome
-# "Navigate to github.com and take a screenshot"
-# "List all open tabs"
-# "Click the login button on this page"
-```
-
-### GitHub CLI Authentication
-
-Authenticate GitHub CLI (`gh`) inside the dclaude container for repository operations.
-
-```bash
-# Authenticate GitHub CLI (persists in dclaude-config volume)
-dclaude gh
-```
-
-**How it works:**
-1. Finds or creates the dclaude container for your current directory
-2. Starts/restarts the container if needed
-3. Runs `gh auth login` interactively in the container
-4. Authentication persists in the `dclaude-config` volume across container rebuilds
-
-**Benefits:**
-- No need to authenticate on host
-- Authentication persists across container recreations
-- Consistent with Claude API key persistence
-- Supports all `gh auth login` methods (browser, token, etc.)
-
-**Example workflow:**
-```bash
-# First time: Authenticate
-dclaude gh
-# Follow prompts to authenticate via browser or token
-
-# Use GitHub CLI in Claude sessions
-dclaude "create a new issue for the bug I just fixed"
-dclaude "list my open pull requests"
-
-# Or use directly
-dclaude exec gh pr list
-dclaude exec gh issue create
-```
-
-**Note:** Authentication is stored in the `dclaude-config` volume, not on your host system.
-
-### How dclaude Works
-
-#### Host Emulation
-dclaude creates a containerized environment that closely emulates your host system:
-
-1. **Path Mirroring**: Your current directory is mounted at the exact same path inside the container
-   - If you're in `/Users/alice/projects/myapp` on the host
-   - Claude sees and works in `/Users/alice/projects/myapp` inside the container
-   - This preserves all relative and absolute path references
-
-2. **Docker Access**: The container can control Docker on your host
-   - Docker socket (`/var/run/docker.sock`) is mounted into the container
-   - Claude can build images, run containers, and manage Docker Compose stacks
-   - Example: `dclaude "build and run the Dockerfile in this directory"`
-
-3. **Smart Network Detection**:
-   - **Auto-Detection**: Automatically determines the best networking mode
-   - **Host Mode**: Full localhost access when platform supports it
-   - **Bridge Mode**: Fallback with limited localhost access
-   - **Caching**: Network capability cached for 24 hours for faster startup
-   - **Override Options**: Environment variables to force specific modes
-
-4. **Persistent Data**: Configuration and cache stored in Docker volumes
-   - `dclaude-claude`: Claude-specific data (API keys, session state)
-   - Data persists between container runs regardless of mode
-
-5. **Flexible Container Modes**: Choose between ephemeral or persistent containers
-   - **Ephemeral (default)**: Fresh container each run, auto-removed on exit
-     - Clean slate every time
-     - System packages not preserved
-     - Best for quick tasks and CI/CD
-   - **Persistent** (`DCLAUDE_RM=false`): Reusable containers per directory
-     - Container persists and can be restarted
-     - Installed tools (Homebrew, npm packages) preserved
-     - Faster startup (no container recreation)
-     - Best for development environments
-
-#### Path Mirroring Explained
-
-The path mirroring system ensures seamless file access:
-
-```bash
-# Example: You're working on a project
-cd /Users/alice/projects/website
-dclaude "review index.html"
-
-# What happens:
-# 1. dclaude detects your current path: /Users/alice/projects/website
-# 2. Mounts this directory at the same path in container
-# 3. Sets container's working directory to /Users/alice/projects/website
-# 4. Claude can access all files as if running natively
-```
-
-This means:
-- All file paths work exactly as expected
-- No need to translate paths between host and container
-- Git commands work normally (sees correct paths)
-- Build tools find dependencies in expected locations
-
-#### Docker Host Access
-
-dclaude can manage Docker on your host system:
-
-```bash
-# Claude can see your running containers
-dclaude "list all running Docker containers"
-
-# Claude can build and run Docker images
-dclaude "create a Dockerfile for this Node.js app and run it"
-
-# Claude can manage Docker Compose
-dclaude "bring up the docker-compose stack and check for errors"
-
-# Claude can debug container issues
-dclaude "why is my nginx container failing to start?"
-```
-
-**Security Note**: Docker socket access grants significant privileges. Only use in trusted environments.
-
-### Authentication Setup
-
-To use Claude CLI, you need to authenticate:
-
-1. Run dclaude for the first time:
-   ```bash
-   dclaude
-   ```
-
-2. When prompted, use the `/login` command to authenticate with your API key
-
-3. Your credentials are securely stored in the `dclaude-claude` Docker volume and persist between sessions
-
-### Networking Modes
-
-dclaude automatically detects the best available networking mode for your platform, providing seamless localhost access when possible.
-
-#### Auto-Detection Process
-
-1. **Platform Detection**: Identifies your operating system
-2. **Capability Testing**: Tests host networking support with ephemeral containers
-3. **Caching**: Stores results for 24 hours to speed up future launches
-4. **Fallback**: Uses bridge mode if host networking isn't available
-
-#### Host Networking Mode
-
-**When Available**: Linux (native), macOS (Docker Desktop beta/OrbStack), Windows (Docker Desktop beta)
-
-**Benefits**:
-- 🌐 Direct access to `localhost:PORT` services
-- 🔗 Container-to-container communication via localhost
-- ⚡ Better network performance
-- 🎯 No port mapping required
-- 📡 Full network stack sharing with host
-
-**Example Use Cases**:
-```bash
-# Access your development database
-dclaude "connect to the PostgreSQL database on localhost:5432"
-
-# Test your web application
-dclaude "check the API endpoints at localhost:3000"
-
-# Debug microservices
-dclaude "analyze the logs from the service running on localhost:8080"
-```
-
-#### Bridge Networking Mode
-
-**When Used**: Fallback when host networking isn't supported
-
-**Limitations**:
-- ❌ Cannot access `localhost` services directly
-- 🔄 Must use `host.docker.internal` instead of `localhost`
-- 📦 Container has isolated network namespace
-- 🚧 Some UDP services may not be accessible
-
-**Workarounds**:
-```bash
-# Instead of localhost:8080, use:
-host.docker.internal:8080
-
-# Example for accessing host services:
-dclaude "test the API at http://host.docker.internal:3000"
-```
-
-#### Command-Line Control
-
-You can override auto-detection with environment variables:
-
-```bash
-# Force host networking (full localhost access)
-DCLAUDE_NETWORK=host dclaude "test localhost:3000"
-
-# Force bridge networking (isolated mode)
-DCLAUDE_NETWORK=bridge dclaude "safer isolated development"
-
-# Use auto-detection (default)
-dclaude "let dclaude choose the best mode"
-```
-
-#### Environment Variable Control
-
-```bash
-# Set networking mode via environment variable
-DCLAUDE_NETWORK=host dclaude
-DCLAUDE_NETWORK=bridge dclaude
-DCLAUDE_NETWORK=auto dclaude  # default
-```
-
-#### Platform-Specific Notes
-
-**Linux**:
-- Host networking works natively
-- Full localhost access available
-- No special configuration required
-
-**macOS**:
-- Host networking available with:
-  - Docker Desktop with host networking beta feature enabled
-  - OrbStack (recommended Docker Desktop alternative)
-- Bridge mode fallback for standard Docker Desktop
-- Check debug output with `DCLAUDE_DEBUG=true dclaude` for detection results
-
-**Windows**:
-- Host networking available with Docker Desktop beta features
-- WSL2 may provide additional networking capabilities
-- Bridge mode fallback for standard configurations
-
-### Environment Variables
-
-| Variable | Description | Default | Values |
-|----------|-------------|---------|--------|
-| `DCLAUDE_TAG` | Docker image tag to use | `latest` | Any valid tag |
-| `DCLAUDE_RM` | Remove container on exit | `false` | `true`, `false` |
-| `DCLAUDE_DEBUG` | Enable debug output (cyan) | `false` | `true`, `false` |
-| `DCLAUDE_QUIET` | Suppress info/success messages | `false` | `true`, `false` |
-| `DCLAUDE_NO_UPDATE` | Skip image update check | `false` | `true`, `false` |
-| `DCLAUDE_DOCKER_SOCKET` | Docker socket path | `/var/run/docker.sock` | Valid socket path |
-| `DCLAUDE_NETWORK` | Network mode | `auto` | `auto`, `host`, `bridge` |
-| `DCLAUDE_REGISTRY` | Docker registry | `docker.io` | Registry URL |
-| `DCLAUDE_SYSTEM_CONTEXT` | Inform Claude about dclaude environment | `true` | `true`, `false` |
-| `CLAUDE_MODEL` | Claude model to use | (Claude's default) | Model name |
-| **SSH Authentication** | | | |
-| `DCLAUDE_GIT_AUTH` | SSH auth for Git | `auto` | `auto`, `agent-forwarding`, `key-mount`, `none` |
-| **Config Mounting** | | | |
-| `DCLAUDE_MOUNT_CONFIGS` | Master switch to enable config mounting | `false` | `true`, `false` |
-| `DCLAUDE_MOUNT_DOCKER` | Mount `.docker/` directory | `true`* | `true`, `false` |
-| `DCLAUDE_MOUNT_GIT` | Mount `.gitconfig` file | `true`* | `true`, `false` |
-| `DCLAUDE_MOUNT_GH` | Mount `.config/gh/` for GitHub CLI | `true`* | `true`, `false` |
-| `DCLAUDE_MOUNT_NPM` | Mount `.npmrc` file | `true`* | `true`, `false` |
-
-*When `DCLAUDE_MOUNT_CONFIGS=true`
-
-### System Context (Environment Awareness)
-
-By default, dclaude informs Claude about its containerized environment through an appended system prompt. This helps Claude understand its capabilities and make better decisions.
-
-**What Claude learns:**
-- Running in a Docker container with path mirroring
-- Docker socket access availability
-- Network mode (host vs bridge) and localhost accessibility
-- SSH authentication setup (agent forwarding, key mounting, or none)
-- Available development tools (Node.js, Python, Homebrew, etc.)
-- File operations affect the host filesystem
-
-**Benefits:**
-- Claude understands `localhost` limitations in bridge mode
-- Better suggestions for Docker commands
-- Awareness of SSH authentication capabilities
-- More accurate path and file handling advice
-
-**Example context provided:**
-```markdown
-# dclaude Environment Context
-
-You are running inside dclaude - a Docker container that emulates the host environment.
-
-## Container Architecture
-- Host Emulation: Your current working directory is mounted at the exact same path
-- Path Mirroring: All file paths work identically to native execution
-- Docker Access: You have access to the host's Docker daemon
-- Networking: Host networking mode enabled (or bridge mode)
-- SSH Authentication: Agent forwarding enabled (or key-mount/none)
-```
-
-**Disable system context:**
-```bash
-# If you prefer Claude not to receive environment information
-DCLAUDE_SYSTEM_CONTEXT=false dclaude
-```
+## Features
 
 ### SSH Authentication
 
-dclaude provides flexible SSH authentication options via the `DCLAUDE_GIT_AUTH` environment variable:
-
-#### Authentication Modes
-
-- **`auto`** (default): Automatically detects the best method
-  - Uses agent forwarding if SSH agent is running
-  - Falls back to key mounting if agent not available
-  - Prefers key mounting when `DCLAUDE_MOUNT_CONFIGS=true`
-
-- **`agent-forwarding`**: Forward SSH agent socket to container
-  - **Most secure** - private keys never leave host
-  - Keys remain in agent memory only
-  - **macOS**: Uses automatic socat proxy to handle permissions
-
-- **`key-mount`**: Mount `~/.ssh` directory (read-only)
-  - Works consistently across all platforms
-  - Private keys accessible in container (read-only)
-  - Compatible with existing workflows
-
-- **`none`**: No SSH authentication
-
-#### Usage Examples
+dclaude automatically handles SSH for git operations:
 
 ```bash
-# Use SSH agent forwarding (most secure, Linux works best)
+# Auto-detect best method (default)
+dclaude
+
+# Force SSH agent forwarding (most secure)
 DCLAUDE_GIT_AUTH=agent-forwarding dclaude
 
-# Use key mounting (most compatible)
+# Mount ~/.ssh directory (most compatible)
 DCLAUDE_GIT_AUTH=key-mount dclaude
-
-# Let dclaude choose the best method
-dclaude  # or DCLAUDE_GIT_AUTH=auto dclaude
 ```
 
-#### Platform Notes
-
-**Linux**: Agent forwarding works with direct socket mounting
-**macOS**: Agent forwarding uses automatic socat proxy (adds ~0.5s startup)
-**Windows**: Limited support; key-mount recommended
-
-#### Loading SSH Keys (Agent Forwarding)
-
-When using agent forwarding, your SSH keys must be loaded into your **host's SSH agent**. The container accesses keys through the agent, not by reading key files.
-
-**Check if keys are loaded:**
-```bash
-# On your host machine
-ssh-add -l
-```
-
-If you see `The agent has no identities`, you need to load your key:
-
-**Load SSH key (one-time):**
-```bash
-# Load your SSH key
-ssh-add ~/.ssh/id_ed25519
-
-# Or load with macOS keychain (persists across reboots)
-ssh-add --apple-use-keychain ~/.ssh/id_ed25519
-```
-
-**Make it permanent (macOS):**
-
-Add to your `~/.ssh/config`:
-```
-Host *
-  AddKeysToAgent yes
-  UseKeychain yes
-  IdentityFile ~/.ssh/id_ed25519
-```
-
-This automatically loads your key when first used and stores the passphrase in macOS keychain.
-
-**Manage loaded keys:**
-```bash
-# List loaded keys
-ssh-add -l
-
-# Remove specific key
-ssh-add -d ~/.ssh/id_ed25519
-
-# Remove all keys
-ssh-add -D
-```
-
-#### How SSH Agent Forwarding Works
-
-**Linux:**
-- Direct socket mount: `$SSH_AUTH_SOCK` → `/tmp/ssh-agent` in container
-- No additional containers needed
-- Native performance
-
-**macOS:**
-- Docker Desktop has permission restrictions on the SSH agent socket
-- dclaude automatically creates a proxy container (`dclaude-ssh-proxy-<uid>`)
-- Uses `socat` to bridge permissions between host agent and container
-- Proxy runs once and is reused across sessions
-- Adds ~0.5s to first startup, then cached
-
-**Windows:**
-- Limited SSH agent support
-- Recommend using `key-mount` mode instead
-
-#### Testing SSH Access
-
-```bash
-# Verify keys are loaded on host first
-ssh-add -l
-
-# Test GitHub SSH authentication from container
-dclaude exec ssh -T git@github.com
-# Expected: "Hi username! You've successfully authenticated..."
-
-# Test git operations
-dclaude exec git clone git@github.com:private/repo.git
-
-# Debug SSH connection issues
-dclaude exec ssh -Tv git@github.com
-```
-
-#### Troubleshooting SSH Authentication
-
-**"The agent has no identities":**
-```bash
-# Problem: No SSH keys loaded in host's SSH agent
-# Solution: Load your key on the host
-ssh-add ~/.ssh/id_ed25519
-
-# Verify it worked
-ssh-add -l
-```
-
-**"Permission denied (publickey)":**
-```bash
-# Check key is loaded
-ssh-add -l
-
-# Verify key has correct permissions on host
-chmod 600 ~/.ssh/id_ed25519
-chmod 644 ~/.ssh/id_ed25519.pub
-
-# Test connection with verbose output
-dclaude exec ssh -Tv git@github.com
-```
-
-**Keys disappear after reboot (macOS):**
-```bash
-# Use keychain integration for persistence
-ssh-add --apple-use-keychain ~/.ssh/id_ed25519
-
-# Or add to ~/.ssh/config (see "Make it permanent" above)
-```
-
-**Proxy container not starting (macOS):**
-```bash
-# Check if proxy container exists
-docker ps -a | grep dclaude-ssh-proxy
-
-# Remove stale proxy container
-docker rm -f dclaude-ssh-proxy-$(id -u)
-
-# Let dclaude recreate it on next run
-dclaude
-```
-
-### Configuration Mounting
-
-dclaude can optionally mount your host configuration files to enable seamless tool integration:
-
-#### Enabling Config Mounting
-
-```bash
-# Enable all config mounting (for installed tools)
-DCLAUDE_MOUNT_CONFIGS=true dclaude
-
-# Selectively disable specific configs
-DCLAUDE_MOUNT_CONFIGS=true DCLAUDE_MOUNT_NPM=false dclaude
-```
-
-#### What Gets Mounted
-
-When `DCLAUDE_MOUNT_CONFIGS=true`, the following configurations are mounted (read-only) by default:
-
-- **Docker Config** (`.docker/`): Access private Docker registries with your auth
-- **Git Config** (`.gitconfig`): Your Git user settings and aliases
-- **GitHub CLI** (`.config/gh/`): GitHub CLI authentication and settings
-- **NPM Config** (`.npmrc`): NPM registry authentication (if present)
-
-All mounts are **read-only** for security. Only configurations for tools installed in the container are mounted.
-
-#### Security Considerations
-
-- Config mounting is **disabled by default** for security
-- All configuration mounts are **read-only**
-- Contains sensitive data (SSH keys, auth tokens)
-- Only enable in trusted environments
-- Individual configs can be disabled via environment variables
-
-#### Use Cases
-
-```bash
-# Clone private repositories using your SSH keys
-DCLAUDE_MOUNT_CONFIGS=true dclaude "git clone git@github.com:private/repo.git"
-
-# Use GitHub CLI with your existing authentication
-DCLAUDE_MOUNT_CONFIGS=true dclaude "gh pr create"
-
-# Pull from private Docker registries
-DCLAUDE_MOUNT_CONFIGS=true dclaude "docker pull private.registry.io/image"
-```
-
-### Docker Socket Access
-
-The container can access Docker on your host system. This enables Claude to:
-- Manage Docker containers
-- Build and run Docker images
-- Access docker-compose projects
-
-**⚠️ Security Note**: Docker socket mounting grants significant privileges. Only use in trusted environments.
+Make sure your SSH key is loaded: `ssh-add -l`
 
 ### Homebrew Support
 
-dclaude includes full Homebrew/Linuxbrew integration for package management:
+Install tools that persist across sessions:
 
 ```bash
-# Create a persistent container first
-DCLAUDE_RM=false dclaude
-
-# Install packages with Homebrew
-dclaude exec brew install ripgrep fd bat
-dclaude exec brew install node@18
-dclaude exec brew install postgresql
-
-# Packages persist across sessions
-dclaude exec which rg  # /home/linuxbrew/.linuxbrew/bin/rg
-
-# Use installed tools in Claude
-DCLAUDE_RM=false dclaude "search for TODO using ripgrep"
+dclaude exec brew install ripgrep fd bat jq
+dclaude exec brew install node@20 python@3.12
 ```
 
-**How it works:**
-- Homebrew installed in `/home/linuxbrew/.linuxbrew`
-- Available to `claude` user via group membership
-- Packages installed with `dclaude exec brew install` persist in containers
-- Requires persistent containers (`DCLAUDE_RM=false`)
+### GitHub CLI
 
-**Common use cases:**
-- Install language toolchains (Go, Rust, etc.)
-- Add development tools (jq, yq, httpie)
-- Install databases (PostgreSQL, Redis, MongoDB)
-- Add build tools (cmake, make, gcc)
+Authenticate once, use everywhere:
 
-## What's Included
-
-### Container Environment
-- **Base OS**: Ubuntu 24.04 LTS (compatible with Homebrew)
-- **Languages**: Node.js 20+, Python 3 with pip
-- **Package Managers**: Homebrew/Linuxbrew, npm, pip
-- **Tools**: Docker CLI, Docker Compose, Git, GitHub CLI (gh), curl, nano
-- **Claude CLI**: Latest version of `@anthropic-ai/claude-code`
-- **Lifecycle**: Ephemeral by default, optional persistent mode
-
-### Persistent Data
-
-Data is stored in named Docker volumes:
-- `dclaude-config`: Configuration files
-- `dclaude-cache`: Cache data
-- `dclaude-claude`: Claude-specific data
-
-To reset all data:
 ```bash
-docker volume rm dclaude-config dclaude-cache dclaude-claude
+dclaude gh                        # Interactive GitHub login
+dclaude exec gh pr list           # Use gh commands
+```
+
+### SSH Server for IDEs
+
+Connect JetBrains Gateway, VS Code Remote, or any SSH client:
+
+```bash
+dclaude ssh                       # Start SSH server, shows port
+# Connect: ssh claude@localhost -p <port>
+# Password: claude
+```
+
+### Chrome DevTools Integration
+
+Control Chrome via MCP for browser automation:
+
+```bash
+dclaude chrome                    # Launch Chrome with DevTools
+dclaude                           # Claude can now interact with the browser
+```
+
+### Config Mounting
+
+Mount your host configs for seamless tool integration:
+
+```bash
+DCLAUDE_MOUNT_CONFIGS=true dclaude
+```
+
+This mounts (read-only): `.docker/`, `.gitconfig`, `.config/gh/`, `.npmrc`
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DCLAUDE_RM` | `false` | Remove container on exit (ephemeral mode) |
+| `DCLAUDE_TAG` | `latest` | Docker image tag |
+| `DCLAUDE_NETWORK` | `auto` | Network mode: `auto`, `host`, `bridge` |
+| `DCLAUDE_GIT_AUTH` | `auto` | SSH auth: `auto`, `agent-forwarding`, `key-mount`, `none` |
+| `DCLAUDE_MOUNT_CONFIGS` | `false` | Mount host config files |
+| `DCLAUDE_DEBUG` | `false` | Enable debug output |
+| `DCLAUDE_QUIET` | `false` | Suppress info messages |
+| `DCLAUDE_NO_UPDATE` | `false` | Skip image update check |
+| `DCLAUDE_SYSTEM_CONTEXT` | `true` | Inform Claude about container environment |
+
+## Networking
+
+dclaude auto-detects the best networking mode:
+
+**Host mode** (when available):
+- Direct `localhost` access to host services
+- Works on: Linux, macOS with OrbStack/Docker Desktop beta, Windows with Docker Desktop beta
+
+**Bridge mode** (fallback):
+- Use `host.docker.internal` instead of `localhost`
+- Standard Docker networking
+
+Force a specific mode:
+```bash
+DCLAUDE_NETWORK=host dclaude
+DCLAUDE_NETWORK=bridge dclaude
 ```
 
 ## Platform Support
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| Linux | ✅ Full Support | Host networking available |
-| macOS | ✅ Full Support | Bridge networking only |
-| Windows | ✅ WSL2/Docker Desktop | Bridge networking only |
+| Linux | Full support | Host networking available |
+| macOS | Full support | Host networking with OrbStack or Docker Desktop beta |
+| Windows | Full support | WSL2/Docker Desktop, host networking with beta features |
 
-## Building from Source
+## What's Included
 
-```bash
-# Clone the repository
-git clone https://github.com/alanbem/dclaude.git
-cd dclaude
-
-# Build the Docker image
-docker build -t alanbem/dclaude:local .
-
-# Use the local image
-DCLAUDE_TAG=local ./dclaude
-```
-
-## Common Workflows
-
-### Quick Tasks (Ephemeral Mode)
-
-For one-off tasks and quick interactions:
-
-```bash
-# Fix code issues
-dclaude "fix linting errors in src/"
-
-# Generate documentation
-dclaude "create API documentation from comments"
-
-# Run tests
-dclaude "run the test suite and explain failures"
-
-# Code review
-dclaude "review the changes in git diff"
-```
-
-### Development Environment (Persistent Mode)
-
-For longer development sessions with installed tools:
-
-```bash
-# Initial setup - create persistent container
-DCLAUDE_RM=false dclaude
-
-# Install development tools
-dclaude exec brew install ripgrep fd exa
-dclaude exec npm install -g typescript eslint prettier
-
-# Work on your project
-DCLAUDE_RM=false dclaude "refactor the authentication module"
-
-# Access shell directly
-dclaude exec  # Opens bash in the container
-
-# Run commands without Claude
-dclaude exec npm test
-dclaude exec rg "TODO" src/
-```
-
-### Full-Stack Development
-
-Using persistent containers for complex setups:
-
-```bash
-# Setup development environment
-DCLAUDE_RM=false dclaude
-
-# Install required tools
-dclaude exec brew install postgresql node@18 redis
-dclaude exec npm install -g pm2
-
-# Start services in background (via shell)
-dclaude exec
-# Inside container:
-brew services start postgresql
-brew services start redis
-pm2 start app.js
-exit
-
-# Use Claude with running services
-DCLAUDE_RM=false dclaude "migrate the database schema"
-DCLAUDE_RM=false dclaude "test the API endpoints on localhost:3000"
-```
-
-### CI/CD Integration
-
-Use ephemeral mode for clean, reproducible builds:
-
-```bash
-# In your CI pipeline
-dclaude "run tests and build production bundle"
-dclaude "lint all files and report issues"
-dclaude "generate changelog from git commits"
-```
-
-### Multi-Project Workflow
-
-Each directory gets its own persistent container:
-
-```bash
-# Project A
-cd ~/projects/frontend
-DCLAUDE_RM=false dclaude
-dclaude exec npm install
-
-# Project B (separate container)
-cd ~/projects/backend
-DCLAUDE_RM=false dclaude
-dclaude exec brew install go
-
-# Each maintains its own environment
-```
+The container includes:
+- **Ubuntu 24.04 LTS** base
+- **Claude Code CLI** (latest)
+- **Node.js 20+**, **Python 3** with pip
+- **Homebrew/Linuxbrew** for package management
+- **Docker CLI** and **Docker Compose**
+- **Git**, **GitHub CLI** (`gh`), common dev tools
+- **tmux** for session management
+- **SSH server** for IDE integration
 
 ## Troubleshooting
 
-### Docker not found
+**Docker not running?**
 ```bash
-# Install Docker Desktop (macOS/Windows) or Docker Engine (Linux)
-# Visit: https://docs.docker.com/get-docker/
+# Make sure Docker Desktop is running, or on Linux:
+sudo systemctl start docker
 ```
 
-### Permission denied on Docker socket
+**Permission denied on Docker socket?**
 ```bash
-# Linux: Add your user to the docker group
+# Linux: Add yourself to the docker group
 sudo usermod -aG docker $USER
-# Then logout and login again
-
-# macOS/Windows: Ensure Docker Desktop is running
+# Then logout and login
 ```
 
-### Image not found / Pull failed
+**Can't access localhost services?**
 ```bash
-# Build the image locally first
-docker build -t alanbem/dclaude:latest .
-```
-
-### Claude authentication issues
-```bash
-# Run dclaude and use /login command
-dclaude
-# Then at the Claude prompt:
-/login
-# Follow the authentication prompts
-```
-
-### Network access issues
-
-**Can't access localhost services**:
-```bash
-# Check current networking mode
+# Check what network mode is being used
 DCLAUDE_DEBUG=true dclaude
 
-# Try forcing host mode (if supported)
+# Try forcing host mode
 DCLAUDE_NETWORK=host dclaude
 
-# On macOS: Enable host networking in Docker Desktop or use OrbStack
-# On Windows: Enable host networking beta feature in Docker Desktop
-
-# Fallback: Use bridge mode with host.docker.internal
-DCLAUDE_NETWORK=bridge dclaude
-# Then access services via host.docker.internal:PORT
+# Or use host.docker.internal in bridge mode
 ```
 
-**Slow startup or networking detection**:
+**SSH keys not working?**
 ```bash
-# Clear network detection cache
-rm ~/.dclaude/network-mode
+# Make sure your key is loaded
+ssh-add -l
 
-# Run with debug to see detection process
-DCLAUDE_DEBUG=true dclaude
+# If empty, load your key
+ssh-add ~/.ssh/id_ed25519
 ```
 
-**Force specific networking mode**:
+**Installed tools disappearing?**
 ```bash
-# Set in your shell profile (~/.bashrc, ~/.zshrc, etc.)
-export DCLAUDE_NETWORK=host    # Always use host networking
-export DCLAUDE_NETWORK=bridge  # Always use bridge networking
+# Make sure you're using persistent mode (default)
+# If you set DCLAUDE_RM=true, tools won't persist
+dclaude exec brew install <tool>  # This persists
 ```
 
-### Debug mode for troubleshooting
-```bash
-# Enable verbose output to diagnose issues
-DCLAUDE_DEBUG=true dclaude
+## Project Structure
+
 ```
-
-### "No container found" when using exec
-```bash
-# The exec command requires a persistent container
-# Error: "No container found for this directory"
-
-# Solution: Create a persistent container first
-DCLAUDE_RM=false dclaude
-
-# Then exec will work
-dclaude exec
-```
-
-### Container not persisting installed packages
-```bash
-# Packages disappear after exit
-
-# Cause: Using ephemeral mode (default)
-dclaude  # Creates new container each time
-
-# Solution: Use persistent mode
-DCLAUDE_RM=false dclaude
-dclaude exec brew install your-package
+.
+├── dclaude                 # Launcher script (runs on host)
+├── docker/
+│   ├── Dockerfile          # Container image definition
+│   ├── README.md           # Docker Hub documentation
+│   ├── usr/local/bin/
+│   │   └── docker-entrypoint.sh
+│   └── home/claude/
+│       └── .tmux.conf
+├── .github/workflows/      # CI/CD (lint, scan, publish)
+├── completions/            # Shell completions (bash, zsh)
+├── Makefile                # Development commands
+└── package.json            # NPM package config
 ```
 
 ## Development
 
-### Project Structure
-```
-.
-├── dclaude              # Launcher script
-├── Dockerfile           # Docker image definition
-├── package.json         # NPM package configuration
-├── .github/workflows/   # CI/CD pipelines
-├── VERSION              # Version tracking
-├── Makefile             # Development commands
-├── completions/         # Shell completion scripts
-├── examples/            # Usage examples and config
-└── scripts/             # Utility scripts
-```
-
-### Using the Makefile
 ```bash
-make build    # Build Docker image locally
-make test     # Run tests
-make install  # Install dclaude locally
-make verify   # Verify installation
-make release  # Create a new release
+# Build locally
+make build
+
+# Test
+make test
+
+# Use local image
+DCLAUDE_TAG=local ./dclaude
 ```
 
-### Shell Completion
-Install tab completion for your shell:
-```bash
-# Bash
-source completions/dclaude.bash
+## Contributing
 
-# Zsh
-source completions/dclaude.zsh
-```
-
-### Contributing
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-### Testing
-```bash
-# Test the launcher script
-bash -n dclaude
-
-# Build and test Docker image
-docker build -t test-image .
-docker run --rm test-image --version
-```
+Contributions welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT - see [LICENSE](LICENSE)
 
-## Acknowledgments
+## Links
 
-- [Anthropic](https://www.anthropic.com/) for Claude and the Claude Code CLI
-- The Docker community for containerization tools
-- Contributors and users of this project
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/alanbem/dclaude/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/alanbem/dclaude/discussions)
+- [Docker Hub](https://hub.docker.com/r/alanbem/dclaude)
+- [npm](https://www.npmjs.com/package/@alanbem/dclaude)
+- [Issues](https://github.com/alanbem/dclaude/issues)
+- [Discussions](https://github.com/alanbem/dclaude/discussions)
