@@ -1,0 +1,12 @@
+# Trivy vulnerability ignore file
+# https://aquasecurity.github.io/trivy/latest/docs/configuration/filtering/#by-finding-ids
+#
+# Add CVE IDs here to acknowledge and suppress known vulnerabilities.
+# Each entry should be documented with a reason.
+#
+# Format:
+#   CVE-XXXX-XXXXX  # reason for ignoring
+#
+# Example:
+#   CVE-2023-12345  # No fix available for Ubuntu 24.04, low exploitability
+
