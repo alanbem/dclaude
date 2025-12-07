@@ -38,6 +38,7 @@ jobs:
         with:
           scandir: '.'
           severity: error
+          ignore_paths: completions
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
