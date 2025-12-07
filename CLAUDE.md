@@ -310,16 +310,28 @@ General guidelines:
 
 ### Git Workflow
 
+**Branch Protection:**
+- `main` branch is protected - direct pushes are blocked
+- All changes require a Pull Request
+- CI must pass before merge (build-and-push workflow)
+
 **Branch Policy:**
 - All development work must be done on feature branches
-- Never commit directly to `main`
 - Branch naming: `feat/description`, `fix/description`, `docs/description`
 
+**PR Workflow:**
+1. Create feature branch: `git checkout -b feat/my-feature`
+2. Make changes and commit
+3. Push branch: `git push -u origin feat/my-feature`
+4. Create PR: `gh pr create`
+5. Wait for CI to pass
+6. Merge PR: `gh pr merge --squash --delete-branch`
+
 **Push Policy:**
-- Do NOT push until the user explicitly asks
-- Each "push" request is a one-time approval only
+- Do NOT push or create PRs until the user explicitly asks
+- Each "push" or "create PR" request is a one-time approval only
 - After pushing, wait for explicit approval before pushing again
-- When user says "merge and push" - merge to main, push, then delete feature branch
+- When user says "merge" - use `gh pr merge --squash --delete-branch` to merge and clean up
 
 ### SSH Authentication System
 
