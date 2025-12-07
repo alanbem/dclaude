@@ -21,12 +21,15 @@ Use [GitHub Security Advisories](../../security/advisories/new) for private disc
 
 ### Alternative Method
 
-If you cannot use GitHub Security Advisories, email the maintainer directly with:
+If you cannot use GitHub Security Advisories, open a private security report by:
 
-- Description of the vulnerability
-- Steps to reproduce
-- Potential impact
-- Any suggested fixes
+1. Going to the repository's Security tab
+2. Clicking "Report a vulnerability"
+3. Including the following information:
+   - Description of the vulnerability
+   - Steps to reproduce
+   - Potential impact
+   - Any suggested fixes
 
 ### What to Expect
 
