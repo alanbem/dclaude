@@ -43,6 +43,8 @@ dclaude
 
 ## Basic Usage
 
+**dclaude passes all arguments directly to Claude CLI** - use it exactly as you would use `claude`:
+
 ```bash
 # Start Claude interactively
 dclaude
@@ -53,6 +55,8 @@ dclaude "fix the bug in main.js"
 # All Claude CLI flags work
 dclaude --version
 dclaude -p "explain this code"
+dclaude --model sonnet
+dclaude --resume
 
 # Execute commands in the container
 dclaude exec npm install
