@@ -3,6 +3,9 @@
 
 FROM ubuntu:24.04
 
+# Version from build args (set by CI/CD)
+ARG VERSION=0.0.1
+
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -169,7 +172,7 @@ ENV CLAUDE_UNSAFE_TRUST_WORKSPACE=true \
 # Labels
 LABEL maintainer="alanbem" \
       description="Dockerized Claude Code with Homebrew and MCP support" \
-      version="0.0.1" \
+      version="${VERSION}" \
       org.opencontainers.image.source="https://github.com/alanbem/dclaude" \
       org.opencontainers.image.documentation="https://github.com/alanbem/dclaude/blob/main/README.md" \
       org.opencontainers.image.licenses="MIT"

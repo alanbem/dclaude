@@ -15,7 +15,7 @@ AI assistant guidance for working with the dclaude (Dockerized Claude Code) proj
    ```
 4. **Check before destructive operations** - if working in the dclaude repo, any container management commands affect YOUR session
 
-**How to detect:** You receive a system prompt section titled "# dclaude Environment Context" which confirms you're running inside dclaude. If working directory is also the dclaude repository itself, you are dogfooding - exercise extreme caution with container lifecycle commands.
+**How to detect:** Run `test -f /.dockerenv && echo "dclaude" || echo "host"` - if it prints "dclaude", you're inside the container. If working directory is also the dclaude repository itself, you are dogfooding - exercise extreme caution with container lifecycle commands.
 
 ## Testing Guidelines
 
