@@ -1,6 +1,6 @@
 {
   "name": "@alanbem/dclaude",
-  "version": "0.0.1",
+  "version": "0.0.0-dev",
   "description": "Dockerized Claude Code CLI launcher with MCP support",
   "main": "dclaude",
   "bin": {

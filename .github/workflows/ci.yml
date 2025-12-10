@@ -32,7 +32,6 @@ jobs:
           filters: |
             docker:
               - 'docker/**'
-              - 'VERSION'
 
   lint:
     name: Lint
@@ -108,10 +107,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Read VERSION file
+      - name: Determine version
         id: version
         run: |
-          VERSION=$(cat VERSION)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="0.0.0-dev"
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
@@ -185,10 +188,14 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Read VERSION file
+      - name: Determine version
         id: version
         run: |
-          VERSION=$(cat VERSION)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="0.0.0-edge"
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
@@ -256,10 +263,10 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Read VERSION file
+      - name: Extract version from tag
         id: version
         run: |
-          VERSION=$(cat VERSION)
+          VERSION="${GITHUB_REF#refs/tags/v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
