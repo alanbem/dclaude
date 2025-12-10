@@ -755,7 +755,6 @@ make push            # Push to registries (requires auth)
 | `1.2.3` | Release tag `v1.2.3` | Pin to specific version |
 | `1.2` | Release tag `v1.2.x` | Pin to minor version |
 | `1` | Release tag `v1.x.x` | Pin to major version |
-| `sha-abc123` | Every build | Pin to exact commit |
 
 **Key principle:** `latest` = stable releases only, `edge` = bleeding edge.
 
