@@ -739,11 +739,29 @@ When code changes are made:
 ## Common Operations
 
 ### Release Process
+
+**CRITICAL: Never create releases without explicit user request.** Each release request is one-time only. Even if a release fails, wait for explicit permission to retry.
+
+**Creating a release:**
 ```bash
-make release          # Interactive version bump
-make build           # Build image
+# Using GitHub CLI (recommended - creates release page)
+gh release create v1.2.3 --title "v1.2.3" --notes "Release notes here"
+
+# Or via GitHub UI
+# Go to https://github.com/alanbem/dclaude/releases/new
+```
+
+**What happens automatically:**
+1. CI detects the `v*` tag
+2. Builds and pushes Docker image with tags: `latest`, `1.2.3`, `1.2`, `1`
+3. Publishes npm package `@alanbem/dclaude@1.2.3` via OIDC trusted publishing
+
+**Version source of truth:** Git tags (no VERSION file)
+
+**Local development:**
+```bash
+make build           # Build local image
 make test            # Run tests
-make push            # Push to registries (requires auth)
 ```
 
 ### Docker Image Tags
