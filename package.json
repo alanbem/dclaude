@@ -4,7 +4,7 @@
   "description": "Dockerized Claude Code CLI launcher with MCP support",
   "main": "dclaude",
   "bin": {
-    "dclaude": "./dclaude"
+    "dclaude": "dclaude"
   },
   "scripts": {
     "test": "bash -n dclaude && echo 'Syntax check passed'",
