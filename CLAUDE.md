@@ -746,6 +746,19 @@ make test            # Run tests
 make push            # Push to registries (requires auth)
 ```
 
+### Docker Image Tags
+
+| Tag | When Updated | Use Case |
+|-----|--------------|----------|
+| `latest` | Release tags only (`v1.2.3`) | Stable, recommended for most users |
+| `edge` | Every main branch push | Bleeding edge, latest features |
+| `1.2.3` | Release tag `v1.2.3` | Pin to specific version |
+| `1.2` | Release tag `v1.2.x` | Pin to minor version |
+| `1` | Release tag `v1.x.x` | Pin to major version |
+| `sha-abc123` | Every build | Pin to exact commit |
+
+**Key principle:** `latest` = stable releases only, `edge` = bleeding edge.
+
 ### Debug Issues
 ```bash
 DCLAUDE_DEBUG=true dclaude    # Enable debug output
