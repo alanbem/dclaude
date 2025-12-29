@@ -14,7 +14,6 @@ readonly QUIET="${DCLAUDE_QUIET:-false}"
 readonly REMOVE_CONTAINER="${DCLAUDE_RM:-false}"
 # Docker socket will be detected dynamically unless overridden
 DOCKER_SOCKET="${DCLAUDE_DOCKER_SOCKET:-}"
-readonly MOUNT_CONFIGS="${DCLAUDE_MOUNT_CONFIGS:-false}"
 readonly GIT_AUTH_MODE="${DCLAUDE_GIT_AUTH:-auto}"  # auto, agent-forwarding, key-mount, none
 readonly ENABLE_SYSTEM_CONTEXT="${DCLAUDE_SYSTEM_CONTEXT:-true}"  # Inform Claude about dclaude environment
 
@@ -419,21 +418,19 @@ detect_network_capability() {
 
 # Create Docker volumes if they don't exist
 create_volumes() {
-    # Create essential volumes for persistence
-    local volumes=("${VOLUME_PREFIX}-claude" "${VOLUME_PREFIX}-config")
+    # Create essential volume for Claude CLI persistence
+    local volume="${VOLUME_PREFIX}-claude"
 
-    for volume in "${volumes[@]}"; do
-        if ! docker volume inspect "$volume" &> /dev/null; then
-            info "Creating volume: $volume"
-            if ! docker volume create "$volume" > /dev/null; then
-                error "Failed to create volume: $volume"
-                exit 1
-            fi
-            debug "Volume created successfully: $volume"
-        else
-            debug "Volume exists: $volume"
+    if ! docker volume inspect "$volume" &> /dev/null; then
+        info "Creating volume: $volume"
+        if ! docker volume create "$volume" > /dev/null; then
+            error "Failed to create volume: $volume"
+            exit 1
         fi
-    done
+        debug "Volume created successfully: $volume"
+    else
+        debug "Volume exists: $volume"
+    fi
 }
 
 # Pull or update the Docker image
@@ -736,14 +733,6 @@ handle_git_auth() {
     local docker_args=()
     local git_auth_mode="${GIT_AUTH_MODE}"
 
-    # If config mounting is enabled and git auth mode is auto, prefer key-mount for consistency
-    if [[ "$MOUNT_CONFIGS" == "true" ]] && [[ "$git_auth_mode" == "auto" ]]; then
-        if [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
-            git_auth_mode="key-mount"
-            debug "Git auth: key-mount (DCLAUDE_MOUNT_CONFIGS=true prefers key mounting)"
-        fi
-    fi
-
     # Auto-detect best method if set to auto
     if [[ "$git_auth_mode" == "auto" ]]; then
         if [[ -n "${SSH_AUTH_SOCK:-}" ]] && [[ -S "${SSH_AUTH_SOCK}" ]]; then
@@ -820,101 +809,6 @@ handle_git_auth() {
             return 1
             ;;
     esac
-
-    # Print arguments separated by null characters for safe parsing (only if we have args)
-    if [[ ${#docker_args[@]} -gt 0 ]]; then
-        printf '%s\0' "${docker_args[@]}"
-    fi
-}
-
-# Mount configuration directories from host
-mount_host_configs() {
-    local docker_args=()
-    local mounted_count=0
-
-    if [[ "$MOUNT_CONFIGS" != "true" ]]; then
-        debug "Config mounting disabled (DCLAUDE_MOUNT_CONFIGS=$MOUNT_CONFIGS)"
-        return 0
-    fi
-
-    info "Mounting host configurations (read-only)"
-    debug "SSH authentication handled separately via DCLAUDE_GIT_AUTH"
-
-    # Docker configuration (docker-cli installed)
-    # Default to true when master switch is enabled
-    if [[ "${DCLAUDE_MOUNT_DOCKER:-true}" == "true" ]] && [[ -d "${HOME}/.docker" ]]; then
-        if [[ -r "${HOME}/.docker" ]]; then
-            docker_args+=(-v "${HOME}/.docker:/home/claude/.docker:ro")
-            debug "Mounting Docker config: ${HOME}/.docker"
-            ((mounted_count++))
-        else
-            warning "Docker config exists but is not readable: ${HOME}/.docker"
-        fi
-    elif [[ "${DCLAUDE_MOUNT_DOCKER:-true}" == "true" ]]; then
-        debug "Docker config not found: ${HOME}/.docker"
-    fi
-
-    # GitHub CLI configuration (github-cli installed)
-    # Default to true when master switch is enabled
-    if [[ "${DCLAUDE_MOUNT_GH:-true}" == "true" ]] && [[ -d "${HOME}/.config/gh" ]]; then
-        if [[ -r "${HOME}/.config/gh" ]]; then
-            docker_args+=(-v "${HOME}/.config/gh:/home/claude/.config/gh:ro")
-            debug "Mounting GitHub CLI config: ${HOME}/.config/gh"
-            ((mounted_count++))
-        else
-            warning "GitHub CLI config exists but is not readable: ${HOME}/.config/gh"
-        fi
-    elif [[ "${DCLAUDE_MOUNT_GH:-true}" == "true" ]]; then
-        debug "GitHub CLI config not found: ${HOME}/.config/gh"
-    fi
-
-    # Git configuration (git installed)
-    # Default to true when master switch is enabled
-    if [[ "${DCLAUDE_MOUNT_GIT:-true}" == "true" ]] && [[ -f "${HOME}/.gitconfig" ]]; then
-        if [[ -r "${HOME}/.gitconfig" ]]; then
-            docker_args+=(-v "${HOME}/.gitconfig:/home/claude/.gitconfig:ro")
-            debug "Mounting Git config: ${HOME}/.gitconfig"
-            ((mounted_count++))
-        else
-            warning "Git config exists but is not readable: ${HOME}/.gitconfig"
-        fi
-    elif [[ "${DCLAUDE_MOUNT_GIT:-true}" == "true" ]]; then
-        debug "Git config not found: ${HOME}/.gitconfig"
-    fi
-
-    # NPM configuration (npm installed)
-    # Default to true when master switch is enabled
-    if [[ "${DCLAUDE_MOUNT_NPM:-true}" == "true" ]] && [[ -f "${HOME}/.npmrc" ]]; then
-        if [[ -r "${HOME}/.npmrc" ]]; then
-            docker_args+=(-v "${HOME}/.npmrc:/home/claude/.npmrc:ro")
-            debug "Mounting NPM config: ${HOME}/.npmrc"
-            ((mounted_count++))
-        else
-            warning "NPM config exists but is not readable: ${HOME}/.npmrc"
-        fi
-    elif [[ "${DCLAUDE_MOUNT_NPM:-true}" == "true" ]]; then
-        debug "NPM config not found: ${HOME}/.npmrc"
-    fi
-
-    # Note: AWS CLI, gcloud, kubectl are NOT installed in the container
-    # These configs will not be mounted unless those tools are added to Dockerfile
-
-    # Security warning with details
-    if [[ $mounted_count -gt 0 ]]; then
-        warning "Mounted $mounted_count configuration directories (read-only)"
-        warning "Security: The following sensitive data is now accessible in the container:"
-        # SSH is now handled separately, don't warn here
-        if [[ "${DCLAUDE_MOUNT_DOCKER:-true}" == "true" ]] && [[ -d "${HOME}/.docker" ]] && [[ -r "${HOME}/.docker" ]]; then
-            warning "  - Docker registry authentication tokens"
-        fi
-        if [[ "${DCLAUDE_MOUNT_GH:-true}" == "true" ]] && [[ -d "${HOME}/.config/gh" ]] && [[ -r "${HOME}/.config/gh" ]]; then
-            warning "  - GitHub CLI authentication tokens"
-        fi
-        if [[ "${DCLAUDE_MOUNT_NPM:-true}" == "true" ]] && [[ -f "${HOME}/.npmrc" ]] && [[ -r "${HOME}/.npmrc" ]]; then
-            warning "  - NPM registry authentication tokens"
-        fi
-        warning "Only use in trusted environments!"
-    fi
 
     # Print arguments separated by null characters for safe parsing (only if we have args)
     if [[ ${#docker_args[@]} -gt 0 ]]; then
@@ -1054,10 +948,7 @@ main() {
     local resolved_git_auth="$GIT_AUTH_MODE"
     if [[ "$GIT_AUTH_MODE" == "auto" ]]; then
         # Same auto-detection logic as handle_git_auth()
-        if [[ "$MOUNT_CONFIGS" == "true" ]] && [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
-            resolved_git_auth="key-mount"
-            debug "Git auth resolved: key-mount (DCLAUDE_MOUNT_CONFIGS=true)"
-        elif [[ -n "${SSH_AUTH_SOCK:-}" ]] && [[ -S "${SSH_AUTH_SOCK}" ]]; then
+        if [[ -n "${SSH_AUTH_SOCK:-}" ]] && [[ -S "${SSH_AUTH_SOCK}" ]]; then
             resolved_git_auth="agent-forwarding"
             debug "Git auth resolved: agent-forwarding (active agent detected)"
         elif [[ -d "${HOME}/.ssh" ]] && [[ -r "${HOME}/.ssh" ]]; then
@@ -1180,8 +1071,6 @@ main() {
         -v "${HOST_PATH}:${HOST_PATH}"
         # Mount persistent Claude configuration volume
         -v "${VOLUME_PREFIX}-claude:/home/claude/.claude"
-        # Mount persistent config volume (gh, etc.)
-        -v "${VOLUME_PREFIX}-config:/home/claude/.config"
         # Set working directory
         -w "${HOST_PATH}"
         # Network mode
@@ -1233,12 +1122,6 @@ main() {
     while IFS= read -r -d '' ssh_arg; do
         [[ -n "$ssh_arg" ]] && DOCKER_ARGS+=("$ssh_arg")
     done < <(handle_git_auth)
-
-    # Mount host configurations if enabled
-    # Use process substitution to preserve null bytes
-    while IFS= read -r -d '' config_arg; do
-        [[ -n "$config_arg" ]] && DOCKER_ARGS+=("$config_arg")
-    done < <(mount_host_configs)
 
     # Add any additional environment variables
     if [[ -n "${CLAUDE_MODEL:-}" ]]; then
@@ -1963,7 +1846,6 @@ Environment Variables:
   DCLAUDE_TAG                Docker image tag (default: latest)
   DCLAUDE_RM                 Remove container on exit (default: false)
   DCLAUDE_DEBUG              Enable debug output (default: false)
-  DCLAUDE_MOUNT_CONFIGS      Mount host configs (default: false)
   DCLAUDE_GIT_AUTH           SSH auth for Git: auto, agent-forwarding, key-mount, none
   DCLAUDE_NETWORK            Network mode: auto, host, bridge
   DCLAUDE_DOCKER_SOCKET      Override Docker socket path
@@ -2006,7 +1888,7 @@ Examples:
   dclaude chrome --setup-only                   # Just create .mcp.json, don't launch
   DCLAUDE_CHROME_PROFILE=testing dclaude chrome # Use different profile
 
-  # Authenticate GitHub CLI (persists in dclaude-config volume)
+  # Authenticate GitHub CLI (persists until container is removed)
   dclaude gh
 
   # Open bash shell in running container

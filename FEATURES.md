@@ -22,13 +22,13 @@ This document tracks potential features, improvements, and ideas for dclaude. No
   - Note: Sessions lost when container exits (use `exit` to leave container)
 - **Complexity**: Low
 
-### ✅ IMPLEMENTED: SSH & Tool Configuration Mounting
-- **Status**: Completed on 2025-09-20
+### ✅ IMPLEMENTED: SSH Authentication
+- **Status**: Completed on 2025-09-20, simplified on 2025-12-29
 - **Implementation**:
-  - Master switch via `DCLAUDE_MOUNT_CONFIGS=false` (opt-in)
-  - Individual ENV vars for each tool (default to true when master enabled)
-  - Configs mounted read-only for installed tools only
-  - GitHub CLI (gh) added to Dockerfile
+  - SSH agent forwarding or key mounting via `DCLAUDE_GIT_AUTH`
+  - GitHub CLI (gh) added to Dockerfile - users auth inside container with `dclaude gh`
+  - Git config done inside container, persists until container removal
+- **Simplified**: Removed host config mounting (DCLAUDE_MOUNT_CONFIGS) in favor of in-container auth
 - **Documented**: README.md and CLAUDE.md updated
 
 ### Enhanced Developer Tools Bundle

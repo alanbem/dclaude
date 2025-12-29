@@ -125,9 +125,8 @@ The dclaude script uses a strict hierarchy for output messages to provide predic
 - **docker/Dockerfile**: Ubuntu 24.04 base, non-root `claude` user, includes Docker CLI/Compose, GitHub CLI, Node.js, Python, socat, gosu, tini, tmux
 - **tini**: Minimal init system (PID 1) that reaps zombie processes created by docker exec commands
 - **docker/usr/local/bin/docker-entrypoint.sh**: Entrypoint script that sets up SSH agent proxy when needed (socat bridge for macOS permissions)
-- **dclaude script**: Launcher handling platform detection, volume management, path mirroring, config mounting
-- **Docker volumes**: `dclaude-config`, `dclaude-cache`, `dclaude-claude` for persistent data
-- **Config mounting**: Optional read-only mounting of host configs (SSH, Docker, Git, GitHub CLI, NPM)
+- **dclaude script**: Launcher handling platform detection, volume management, path mirroring
+- **Docker volumes**: `dclaude-claude` for persistent Claude CLI data
 - **System Context**: Automatic environment awareness via `--append-system-prompt`
 
 ### System Context (Environment Awareness)
@@ -240,7 +239,6 @@ inotifywait -e close_write -e moved_to --include '\.claude\.json$' /home/claude
 1. **Docker socket mounting** (`/var/run/docker.sock`) - enables container management from within
 2. **Path mirroring** - current directory mounted at same absolute path in container
 3. **Smart network detection** - auto-detects optimal networking mode with caching and platform validation
-4. **Configuration mounting** - optional read-only mounting of host tool configs for seamless authentication
 
 ### Network Detection Algorithm
 
@@ -352,18 +350,6 @@ The `handle_ssh_auth()` function provides flexible SSH authentication via `DCLAU
 - Returns null-separated Docker arguments for safe parsing
 - **SOLVED**: macOS Docker Desktop permissions via socat proxy in entrypoint script
 - Entrypoint automatically creates proxy socket owned by claude user when needed
-
-### Configuration Mounting System
-
-The `mount_host_configs()` function provides selective config mounting controlled by `DCLAUDE_MOUNT_CONFIGS`.
-
-**User Documentation**: See README.md "Configuration Mounting" section for usage and supported configs.
-
-#### Technical Implementation
-- Returns null-separated Docker arguments for safe parsing
-- Validates each config path exists and is readable before mounting
-- All mounts use read-only flag (`:ro`)
-- SSH handled separately via `handle_ssh_auth()` function
 
 ## Tmux Session Management
 
