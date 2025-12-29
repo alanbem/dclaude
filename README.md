@@ -151,16 +151,6 @@ dclaude chrome                    # Launch Chrome with DevTools
 dclaude                           # Claude can now interact with the browser
 ```
 
-### Config Mounting
-
-Mount your host configs for seamless tool integration:
-
-```bash
-DCLAUDE_MOUNT_CONFIGS=true dclaude
-```
-
-This mounts (read-only): `.docker/`, `.gitconfig`, `.config/gh/`, `.npmrc`
-
 ### System Context
 
 dclaude automatically tells Claude about its container environment so it can give better suggestions:
@@ -184,7 +174,6 @@ DCLAUDE_SYSTEM_CONTEXT=false dclaude
 | `DCLAUDE_TAG` | `latest` | Docker image tag |
 | `DCLAUDE_NETWORK` | `auto` | Network mode: `auto`, `host`, `bridge` |
 | `DCLAUDE_GIT_AUTH` | `auto` | SSH auth: `auto`, `agent-forwarding`, `key-mount`, `none` |
-| `DCLAUDE_MOUNT_CONFIGS` | `false` | Mount host config files |
 | `DCLAUDE_DEBUG` | `false` | Enable debug output |
 | `DCLAUDE_QUIET` | `false` | Suppress info messages |
 | `DCLAUDE_NO_UPDATE` | `false` | Skip image update check |
