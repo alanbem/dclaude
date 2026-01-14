@@ -351,6 +351,96 @@ The `handle_ssh_auth()` function provides flexible SSH authentication via `DCLAU
 - **SOLVED**: macOS Docker Desktop permissions via socat proxy in entrypoint script
 - Entrypoint automatically creates proxy socket owned by claude user when needed
 
+#### macOS SSH Proxy Architecture
+
+On macOS, SSH agent forwarding requires a separate proxy container due to Docker Desktop permission issues:
+
+1. **Proxy container** (`dclaude-ssh-proxy-<uid>`) runs socat to bridge the host's SSH agent socket
+2. **Shared volume** (`dclaude-ssh-proxy`) holds the proxied socket at `/tmp/ssh-proxy/agent`
+3. **Main container** mounts this volume read-only and sets `SSH_AUTH_SOCK=/tmp/ssh-proxy/agent`
+
+**Key insight**: The proxy forwards keys dynamically - once running, any keys added to the host agent are immediately available in the container. The proxy doesn't need to restart when you `ssh-add` new keys.
+
+#### Troubleshooting: SSH Agent Not Working
+
+If SSH operations fail with "Permission denied (publickey)" after loading keys on the host:
+
+**Symptoms:**
+- `ssh-add -l` on host shows keys loaded
+- `ssh-add -l` in container shows "Error connecting to agent: Connection refused"
+- Socket file exists at `/tmp/ssh-proxy/agent` but nothing is listening
+
+**Cause:** The SSH proxy container died or was never started for this session.
+
+**Fix:** Restart the proxy container without restarting dclaude:
+
+```bash
+# From the HOST (not inside dclaude):
+docker run -d \
+    --name "dclaude-ssh-proxy-$(id -u)" \
+    -v "/run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock:ro" \
+    -v "dclaude-ssh-proxy:/tmp/ssh-proxy" \
+    --rm \
+    alpine:3.19 sh -c '
+        apk add --no-cache socat >/dev/null 2>&1
+        rm -f /tmp/ssh-proxy/agent
+        socat UNIX-LISTEN:/tmp/ssh-proxy/agent,fork,mode=660 \
+              UNIX-CONNECT:/run/host-services/ssh-auth.sock
+    '
+```
+
+After this, `ssh-add -l` inside the container should show your keys immediately.
+
+**Note:** This only applies to macOS. On Linux, the SSH agent socket is mounted directly.
+
+## Git Configuration
+
+### The `dclaude git` Command
+
+Configure git identity (name/email) for commits made inside the container.
+
+**Usage:**
+```bash
+dclaude git
+```
+
+**Flow:**
+1. Checks if git config already exists in volume
+2. If exists, shows current config and asks if you want to update
+3. Checks host's git config (`~/.gitconfig`)
+4. If found on host, offers to copy to container
+5. Otherwise, prompts for manual input
+6. Saves to persistent volume
+
+**Example:**
+```
+$ dclaude git
+
+Git Configuration
+─────────────────
+Found on host:
+  Name:  Alan Bem
+  Email: alan@example.com
+
+Copy to container? [Y/n]: y
+
+✓ Git config saved
+```
+
+### Storage and Persistence
+
+- **Location:** `/home/claude/.claude/.gitconfig` (in `dclaude-claude` volume)
+- **Environment:** `GIT_CONFIG_GLOBAL` points to this file
+- **Persistence:** Survives container stop/start, removal, and recreation
+- **Only deleted by:** `docker volume rm dclaude-claude`
+
+### Why This Is Needed
+
+SSH agent forwarding provides authentication (keys for push/pull), but git also needs identity configuration (name/email) for commits. The host's `~/.gitconfig` isn't mounted, so `dclaude git` bridges this gap by:
+1. Reading from host's git config
+2. Storing in the persistent volume
+3. Making it available via `GIT_CONFIG_GLOBAL` env var
+
 ## Tmux Session Management
 
 ### Architecture
