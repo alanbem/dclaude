@@ -817,16 +817,22 @@ handle_git_auth() {
 }
 
 # Detect TTY availability and return appropriate Docker flags
+# Detect TTY status early (before any subshells)
+# Must be done at script top-level since $() subshells don't inherit TTY
+STDIN_IS_TTY=false
+STDOUT_IS_TTY=false
+[[ -t 0 ]] && STDIN_IS_TTY=true
+[[ -t 1 ]] && STDOUT_IS_TTY=true
+
 detect_tty_flags() {
     local tty_flags=""
 
-    # Check if stdin is a TTY
-    if [[ -t 0 ]]; then
+    # Use pre-detected TTY status (can't detect inside subshell)
+    if [[ "$STDIN_IS_TTY" == "true" ]]; then
         tty_flags="-i"
     fi
 
-    # Check if stdout is a TTY
-    if [[ -t 1 ]]; then
+    if [[ "$STDOUT_IS_TTY" == "true" ]]; then
         tty_flags="${tty_flags} -t"
     fi
 
@@ -834,7 +840,7 @@ detect_tty_flags() {
     tty_flags=$(echo $tty_flags | xargs)
 
     if [[ "$DEBUG" == "true" ]]; then
-        debug "TTY detection: stdin=$(test -t 0 && echo yes || echo no), stdout=$(test -t 1 && echo yes || echo no)"
+        debug "TTY detection: stdin=$STDIN_IS_TTY, stdout=$STDOUT_IS_TTY"
         debug "TTY flags: ${tty_flags:-none}"
     fi
 
