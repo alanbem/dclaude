@@ -1776,6 +1776,94 @@ cmd_rm() {
     exit 0
 }
 
+# Subcommand: configure git identity
+cmd_git() {
+    local container_name=$(get_container_name "$HOST_PATH")
+
+    # Check if container exists
+    if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        error "No container found for this directory"
+        info "Run 'dclaude' first to create a container"
+        exit 1
+    fi
+
+    # Check if container is running
+    local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+    if [[ "$container_status" != "running" ]]; then
+        if [[ "$container_status" == "exited" ]]; then
+            info "Starting container: $container_name"
+            docker start "$container_name" >/dev/null
+            sleep 1
+        else
+            error "Container $container_name is in unexpected state: $container_status"
+            exit 1
+        fi
+    fi
+
+    # Check if git config already exists
+    local existing_name existing_email
+    existing_name=$(docker exec -u claude "$container_name" git config --global user.name 2>/dev/null || echo "")
+    existing_email=$(docker exec -u claude "$container_name" git config --global user.email 2>/dev/null || echo "")
+
+    echo ""
+    echo "Git Configuration"
+    echo "─────────────────"
+
+    if [[ -n "$existing_name" && -n "$existing_email" ]]; then
+        echo "Current config:"
+        echo "  Name:  $existing_name"
+        echo "  Email: $existing_email"
+        echo ""
+        read -p "Update? [y/N]: " update
+        if [[ "$update" != "y" && "$update" != "Y" ]]; then
+            exit 0
+        fi
+    fi
+
+    # Try to get from host
+    local host_name host_email
+    host_name=$(git config --global user.name 2>/dev/null || echo "")
+    host_email=$(git config --global user.email 2>/dev/null || echo "")
+
+    local name="" email=""
+
+    if [[ -n "$host_name" && -n "$host_email" ]]; then
+        echo "Found on host:"
+        echo "  Name:  $host_name"
+        echo "  Email: $host_email"
+        echo ""
+        read -p "Copy to container? [Y/n]: " copy
+        if [[ "$copy" != "n" && "$copy" != "N" ]]; then
+            name="$host_name"
+            email="$host_email"
+        fi
+    fi
+
+    # Prompt if not copying from host
+    if [[ -z "$name" ]]; then
+        if [[ -z "$host_name" && -z "$host_email" ]]; then
+            echo "No git config found on host."
+            echo ""
+        fi
+        read -p "Enter your name: " name
+        read -p "Enter your email: " email
+    fi
+
+    # Validate
+    if [[ -z "$name" || -z "$email" ]]; then
+        error "Name and email are required"
+        exit 1
+    fi
+
+    # Save to container
+    docker exec -u claude "$container_name" git config --global user.name "$name"
+    docker exec -u claude "$container_name" git config --global user.email "$email"
+
+    echo ""
+    success "Git config saved"
+    exit 0
+}
+
 # Initialize HOST_PATH once for all commands
 HOST_PATH=$(get_host_path)
 
@@ -1823,6 +1911,10 @@ if [[ $# -gt 0 ]]; then
             shift
             cmd_ssh "$@"
             ;;
+        git)
+            shift
+            cmd_git "$@"
+            ;;
         --help|-h|help)
             cat << 'EOF'
 dclaude - Dockerized Claude Code Launcher
@@ -1836,6 +1928,7 @@ Usage:
   dclaude stop                Stop container for current directory
   dclaude rm [-f]             Remove container for current directory
   dclaude ssh                 Start SSH server for remote access
+  dclaude git                 Configure git identity (name/email)
   dclaude chrome [options]    Launch Chrome with DevTools and MCP integration
   dclaude gh                  Authenticate GitHub CLI (runs gh auth login)
   dclaude exec [command]      Execute command in container (default: bash)

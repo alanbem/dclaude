@@ -170,7 +170,8 @@ ENV CLAUDE_UNSAFE_TRUST_WORKSPACE=true \
     TERM=xterm-256color \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
-    LANGUAGE=en_US:en
+    LANGUAGE=en_US:en \
+    GIT_CONFIG_GLOBAL=/home/claude/.claude/.gitconfig
 
 # Labels
 LABEL maintainer="alanbem" \
