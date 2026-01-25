@@ -259,6 +259,19 @@ ssh-add ~/.ssh/id_ed25519
 dclaude exec brew install <tool>  # This persists
 ```
 
+**Directories appear empty inside container? (OrbStack)**
+
+This is a [known OrbStack 2.0.x bug](https://github.com/orbstack/orbstack/issues/2103) where VirtioFS caches stale directory entries. Directories that existed before upgrading to OrbStack 2.0 may appear empty inside the container.
+
+```bash
+# Fix: rename the directory to clear the cache
+mv problematic-dir problematic-dir.tmp && mv problematic-dir.tmp problematic-dir
+
+# Or restart OrbStack completely (clears all caches)
+```
+
+Upgrading to the latest OrbStack version may also help.
+
 ## Project Structure
 
 ```text
