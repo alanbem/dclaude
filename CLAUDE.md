@@ -141,6 +141,7 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 **Key Details**:
 - **Binary location**: `~/.local/bin/claude` (symlink to versioned installation)
 - **Data location**: `~/.local/share/claude/versions/<version>`
+- **Config location**: `CLAUDE_CONFIG_DIR=/home/claude/.claude` (points to mounted volume)
 - **Auto-updates disabled**: `DISABLE_AUTOUPDATER=1` environment variable prevents runtime updates
 - **Version at build time**: Installs latest version when image is built
 - **SHA256 verification**: Native installer verifies checksums automatically
@@ -156,6 +157,8 @@ dclaude update  # Runs 'claude update' inside the container
 ```
 
 **Note**: Node.js and npm remain in the image for MCP servers and user-installed packages, but are no longer used for Claude Code installation.
+
+**Why CLAUDE_CONFIG_DIR is required**: Native Claude Code stores credentials in `~/.claude/.credentials.json` and also expects `~/.claude.json` in the home directory. Setting `CLAUDE_CONFIG_DIR` tells Claude to look for ALL config files in a single directory, which maps to our mounted volume for persistence.
 
 ### System Context (Environment Awareness)
 
