@@ -129,6 +129,34 @@ The dclaude script uses a strict hierarchy for output messages to provide predic
 - **Docker volumes**: `dclaude-claude` for persistent Claude CLI data
 - **System Context**: Automatic environment awareness via `--append-system-prompt`
 
+### Claude Code Installation
+
+**Method**: Native binary installation (Anthropic's recommended approach)
+
+**Installation Command** (in Dockerfile):
+```dockerfile
+RUN curl -fsSL https://claude.ai/install.sh | bash
+```
+
+**Key Details**:
+- **Binary location**: `~/.local/bin/claude` (symlink to versioned installation)
+- **Data location**: `~/.local/share/claude/versions/<version>`
+- **Auto-updates disabled**: `DISABLE_AUTOUPDATER=1` environment variable prevents runtime updates
+- **Version at build time**: Installs latest version when image is built
+- **SHA256 verification**: Native installer verifies checksums automatically
+
+**Why Native Installation**:
+- npm installation is officially deprecated by Anthropic
+- Native installer includes built-in checksum verification
+- Simpler update mechanism via `claude update` command
+
+**Updating Claude Code**:
+```bash
+dclaude update  # Runs 'claude update' inside the container
+```
+
+**Note**: Node.js and npm remain in the image for MCP servers and user-installed packages, but are no longer used for Claude Code installation.
+
 ### System Context (Environment Awareness)
 
 **Purpose**: Inform Claude about its containerized environment to enable better decision-making and more accurate suggestions.
