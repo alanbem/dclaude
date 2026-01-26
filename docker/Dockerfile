@@ -121,8 +121,10 @@ RUN npm config set prefix /home/claude/.npm-global \
     && echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.profile \
     && echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.profile
 
-# Install Claude CLI
-RUN npm install -g @anthropic-ai/claude-code
+# Install Claude CLI using native installer (recommended method)
+# Native installer downloads binary to ~/.local/bin/claude with SHA256 verification
+# Installs latest version at build time; DISABLE_AUTOUPDATER (below) prevents runtime updates
+RUN curl -fsSL https://claude.ai/install.sh | bash
 
 # Create workspace and necessary directories with correct ownership
 RUN mkdir -p /home/claude/workspace \
@@ -163,6 +165,7 @@ ENV CLAUDE_UNSAFE_TRUST_WORKSPACE=true \
     CLAUDE_EDIT_TIMEOUT=300000 \
     CLAUDE_WRITE_TIMEOUT=300000 \
     CLAUDE_WEBFETCH_TIMEOUT=300000 \
+    DISABLE_AUTOUPDATER=1 \
     TERM=xterm-256color \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
