@@ -172,12 +172,71 @@ DCLAUDE_SYSTEM_CONTEXT=false dclaude
 |----------|---------|-------------|
 | `DCLAUDE_RM` | `false` | Remove container on exit (ephemeral mode) |
 | `DCLAUDE_TAG` | `latest` | Docker image tag |
+| `DCLAUDE_NAMESPACE` | (none) | Namespace for isolated credentials/config |
 | `DCLAUDE_NETWORK` | `auto` | Network mode: `auto`, `host`, `bridge` |
 | `DCLAUDE_GIT_AUTH` | `auto` | SSH auth: `auto`, `agent-forwarding`, `key-mount`, `none` |
 | `DCLAUDE_DEBUG` | `false` | Enable debug output |
 | `DCLAUDE_QUIET` | `false` | Suppress info messages |
 | `DCLAUDE_NO_UPDATE` | `false` | Skip image update check |
 | `DCLAUDE_SYSTEM_CONTEXT` | `true` | Inform Claude about container environment |
+
+## Configuration File
+
+Create a `.dclaude` file at your project root to configure dclaude for that directory tree:
+
+```bash
+# ~/projects/mycompany/.dclaude
+NAMESPACE=mycompany
+NETWORK=host
+DEBUG=true
+```
+
+dclaude walks up the directory tree to find `.dclaude` files. Any dclaude session started from that directory or any subdirectory will use these settings.
+
+**Supported variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `NAMESPACE` | Isolate credentials/config (see Namespace Isolation) |
+| `NETWORK` | Network mode (`host`, `bridge`) |
+| `GIT_AUTH` | Git auth mode |
+| `DEBUG` | Enable debug output (`true`, `false`) |
+| `CHROME_PORT` | Chrome DevTools port |
+
+**Precedence:** Environment variables override `.dclaude` file settings.
+
+## Namespace Isolation
+
+Use namespaces to maintain completely separate environments with different credentials and settings.
+
+**Use case:** You have both a personal Anthropic subscription and a company subscription. You want to keep them completely separate.
+
+**Option 1: Using `.dclaude` file (recommended)**
+```bash
+# Create config at company project root
+echo "NAMESPACE=mycompany" > ~/projects/mycompany/.dclaude
+
+# Now any dclaude in that tree uses company credentials
+cd ~/projects/mycompany/api/src
+dclaude  # Uses mycompany namespace automatically
+```
+
+**Option 2: Using environment variable**
+```bash
+DCLAUDE_NAMESPACE=mycompany dclaude
+```
+
+**Option 3: Shell alias**
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+alias dclaude-work='DCLAUDE_NAMESPACE=mycompany dclaude'
+```
+
+Each namespace gets its own:
+- Claude credentials and API key
+- Claude settings and preferences
+- Git configuration
+- Container instance
 
 ## Networking
 
