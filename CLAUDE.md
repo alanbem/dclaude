@@ -801,6 +801,11 @@ When asked to address PR reviews:
 2. Do NOT blindly apply suggested changes - evaluate each suggestion in context
 3. If a suggestion seems wrong, unnecessary, or you're unsure about it, ask the user before making changes
 4. Some suggestions may conflict with project conventions or introduce issues - use judgment
+5. **Reply to comments** - Respond directly in the PR thread to each comment:
+   - Fixed: "Fixed in <commit>" or just "Fixed"
+   - Not fixing: Brief reason (e.g., "Not needed - CI passed without this")
+   - Deferred: "Will address separately" or "Out of scope"
+   - Keep responses brief and to the point
 
 ### Code Review Checklist
 When code changes are made:
