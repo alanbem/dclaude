@@ -435,6 +435,22 @@ SSH agent forwarding provides authentication (keys for push/pull), but git also 
 ### Architecture
 Persistent containers (`DCLAUDE_RM=false`, now the default) use tmux for session management. Each `dclaude` invocation creates a **new** tmux session with a unique name.
 
+### Maximum Transparency Mode
+
+Tmux is configured for maximum transparency so dclaude feels like a normal CLI application:
+
+- **No status bar** - `status off` hides the tmux status bar completely
+- **No mouse capture** - `mouse off` enables native terminal features
+- **No prefix key** - All keyboard input passes through to Claude
+- **No detach keys** - Users can't accidentally detach
+
+**Native terminal features work normally:**
+- Click-drag text selection
+- Cmd+C to copy (macOS) / Ctrl+Shift+C (Linux)
+- Cmd+F to search scrollback (iTerm2)
+- Native scroll gestures
+- Full keyboard pass-through
+
 ### Session Naming
 - **Default**: Auto-generated timestamp-based name (e.g., `claude-20231118-143022`)
 - **Custom**: Set via `DCLAUDE_TMUX_SESSION` environment variable (e.g., `claude-architect`)
@@ -458,41 +474,6 @@ set-option -g detach-on-destroy on
 - `escape-time 0` - Eliminates keyboard input delays
 - `aggressive-resize off` - Prevents input lag in multiple sessions
 - Simple `new-session` command without detach/attach pattern prevents double tmux processes that cause lag
-
-### Status Bar Design
-
-The tmux status bar displays environment context at the bottom of the screen.
-
-**Layout:**
-```
- net: HOST • dir: /path/to/dir      session: NAME      claude: 1.2.3 • image: local
- └─ left ─────────────────────┘     └─ center ─┘       └────────── right ─────────┘
-```
-
-**Design Principles:**
-1. **Theme-agnostic**: Works with both dark and light terminal themes
-2. **Claude branding**: Labels use Claude orange (#D97757)
-3. **Minimal footprint**: Single status line, no borders
-
-**Color Scheme:**
-| Element | Color | Rationale |
-|---------|-------|-----------|
-| Background | `terminal` | Matches user's terminal theme |
-| Labels | `#D97757` | Claude orange for branding |
-| Values | `terminal` | Adapts to user's theme (light/dark) |
-| Separators | `#D97757` | Orange dot (•) between attributes |
-
-**Internal Environment Variables:**
-These are passed via `docker exec -e` when creating tmux sessions:
-- `_DCLAUDE_NET` - Network mode (host/bridge)
-- `_DCLAUDE_TAG` - Docker image tag
-- `_DCLAUDE_SESSION` - Session name ("auto" or custom)
-
-**Adding New Attributes:**
-1. Pass new env var in dclaude script via `exec_env_args+=(-e "_DCLAUDE_NEWVAR=value")`
-2. Update `docker/home/claude/.tmux.conf` status-left/right with: `#[fg=#D97757]label: #[fg=terminal]#(printenv _DCLAUDE_NEWVAR || echo '?')`
-3. Use `•` separator between attributes in same section
-4. Rebuild image (tmux config is baked in)
 
 ### Session Lifecycle
 1. `dclaude` starts → Creates new tmux session → Runs Claude
