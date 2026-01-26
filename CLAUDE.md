@@ -853,6 +853,20 @@ gh release create v1.2.3 --title "v1.2.3" --notes "Release notes here"
 
 **Version source of truth:** Git tags (no VERSION file)
 
+**Release notes must include ALL changes since last release:**
+```bash
+# Check what commits are included in the release
+git fetch --tags
+git log v0.0.9..HEAD --oneline  # Replace v0.0.9 with last release tag
+
+# Look for merged PRs and group changes by:
+# - New features (feat:)
+# - Bug fixes (fix:)
+# - Documentation (docs:)
+# - Refactoring (refactor:)
+# - Other changes (chore:, etc.)
+```
+
 **Local development:**
 ```bash
 make build           # Build local image
