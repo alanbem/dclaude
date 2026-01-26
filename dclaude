@@ -966,6 +966,7 @@ is_print_mode() {
     return 1
 }
 
+
 # Main execution
 main() {
     # No argument parsing - pass everything through to Claude
@@ -1092,6 +1093,20 @@ main() {
         fi
     else
         debug "System context disabled (DCLAUDE_SYSTEM_CONTEXT=$ENABLE_SYSTEM_CONTEXT)"
+    fi
+
+    # Final environment summary (all variables now resolved)
+    if [[ "$DEBUG" == "true" ]]; then
+        debug "Resolved environment:"
+        debug "  NAMESPACE=${NAMESPACE:-<not set>}"
+        debug "  NETWORK_MODE=$network_mode"
+        debug "  GIT_AUTH=$resolved_git_auth"
+        debug "  DOCKER_SOCKET=${DOCKER_SOCKET:-<not found>}"
+        debug "  CHROME_PORT=${CHROME_PORT:-9222}"
+        debug "  SYSTEM_CONTEXT=$ENABLE_SYSTEM_CONTEXT"
+        debug "  IMAGE=$IMAGE"
+        debug "  HOST_PATH=$HOST_PATH"
+        debug "  PLATFORM=$platform"
     fi
 
     # Generate container name based on path (for reuse when DCLAUDE_RM=false)
