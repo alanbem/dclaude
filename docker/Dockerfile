@@ -29,7 +29,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tmux \
     locales \
     tini \
-    inotify-tools \
     wget \
     # Build tools (required for Homebrew)
     build-essential \
