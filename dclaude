@@ -955,13 +955,15 @@ detect_tty_flags() {
     echo "$tty_flags"
 }
 
-# Check if Claude is being run in print mode (-p/--print)
-# This checks arguments as separate array elements, so -p inside a string won't match
-is_print_mode() {
+# Check if Claude is being run in a mode that should skip tmux
+# These are flags that just output something and exit (no interactive session)
+should_skip_tmux() {
     for arg in "$@"; do
-        if [[ "$arg" == "-p" ]] || [[ "$arg" == "--print" ]]; then
-            return 0
-        fi
+        case "$arg" in
+            -p|--print|--version|-v|--help|-h)
+                return 0
+                ;;
+        esac
     done
     return 1
 }
@@ -1144,7 +1146,7 @@ main() {
             fi
 
             # Check if interactive (TTY available) and not in print mode
-            if [[ -n "$tty_flags" ]] && ! is_print_mode "${claude_args[@]}" "$@"; then
+            if [[ -n "$tty_flags" ]] && ! should_skip_tmux "${claude_args[@]}" "$@"; then
                 # Interactive and not print mode - use tmux for session management
                 local tmux_session
                 if [[ -n "${DCLAUDE_TMUX_SESSION:-}" ]]; then
@@ -1291,7 +1293,7 @@ main() {
         docker exec -u root "$container_name" /usr/local/bin/docker-entrypoint.sh true >/dev/null 2>&1 || true
 
         # Check if interactive (TTY available) and not in print mode
-        if [[ -n "$tty_flags" ]] && ! is_print_mode "${claude_args[@]}" "$@"; then
+        if [[ -n "$tty_flags" ]] && ! should_skip_tmux "${claude_args[@]}" "$@"; then
             # Interactive and not print mode - use tmux for session management
             local tmux_session
             if [[ -n "${DCLAUDE_TMUX_SESSION:-}" ]]; then
