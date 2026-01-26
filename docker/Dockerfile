@@ -159,6 +159,7 @@ WORKDIR /home/claude/workspace
 
 # Environment variables for Claude
 ENV CLAUDE_UNSAFE_TRUST_WORKSPACE=true \
+    CLAUDE_CONFIG_DIR=/home/claude/.claude \
     MCP_TIMEOUT=30000 \
     CLAUDE_BASH_TIMEOUT=600000 \
     CLAUDE_READ_TIMEOUT=300000 \
