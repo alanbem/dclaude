@@ -129,6 +129,37 @@ The dclaude script uses a strict hierarchy for output messages to provide predic
 - **Docker volumes**: `dclaude-claude` for persistent Claude CLI data
 - **System Context**: Automatic environment awareness via `--append-system-prompt`
 
+### Claude Code Installation
+
+**Method**: Native binary installation (Anthropic's recommended approach)
+
+**Installation Command** (in Dockerfile):
+```dockerfile
+RUN curl -fsSL https://claude.ai/install.sh | bash
+```
+
+**Key Details**:
+- **Binary location**: `~/.local/bin/claude` (symlink to versioned installation)
+- **Data location**: `~/.local/share/claude/versions/<version>`
+- **Config location**: `CLAUDE_CONFIG_DIR=/home/claude/.claude` (points to mounted volume)
+- **Auto-updates disabled**: `DISABLE_AUTOUPDATER=1` environment variable prevents runtime updates
+- **Version at build time**: Installs latest version when image is built
+- **SHA256 verification**: Native installer verifies checksums automatically
+
+**Why Native Installation**:
+- npm installation is officially deprecated by Anthropic
+- Native installer includes built-in checksum verification
+- Simpler update mechanism via `claude update` command
+
+**Updating Claude Code**:
+```bash
+dclaude update  # Runs 'claude update' inside the container
+```
+
+**Note**: Node.js and npm remain in the image for MCP servers and user-installed packages, but are no longer used for Claude Code installation.
+
+**Why CLAUDE_CONFIG_DIR is required**: Native Claude Code stores credentials in `~/.claude/.credentials.json` and also expects `~/.claude.json` in the home directory. Setting `CLAUDE_CONFIG_DIR` tells Claude to look for ALL config files in a single directory, which maps to our mounted volume for persistence.
+
 ### System Context (Environment Awareness)
 
 **Purpose**: Inform Claude about its containerized environment to enable better decision-making and more accurate suggestions.
@@ -192,48 +223,6 @@ Persistent containers run `tini` as PID 1, which serves as a minimal init system
 - docker/Dockerfile ENTRYPOINT: Wraps entrypoint with tini for ephemeral containers
 - dclaude script: Uses `--entrypoint /usr/bin/tini` for persistent containers
 - Result: Clean process tree with no zombie accumulation
-
-### Configuration Persistence with inotifywait
-
-**Why event-based sync is critical:**
-
-Claude Code stores its configuration in `~/.claude.json`. Since this directory is mounted as a volume for persistence, we need to sync changes between the container's home directory and the volume.
-
-**The Problem With Polling:**
-- Traditional approach: Check file every N seconds (e.g., every 5s)
-- Wastes CPU cycles even when nothing changes
-- Creates sync delay (up to N seconds before changes persist)
-- Unnecessary I/O operations
-
-**How inotifywait Solves This:**
-- Event-based monitoring using Linux kernel inotify API
-- Zero CPU usage while idle - kernel wakes process only on file changes
-- Instant sync when file is modified (no polling delay)
-- Handles atomic writes correctly (watches for `close_write` and `moved_to` events)
-
-**Implementation:**
-- docker/Dockerfile: Installs `inotify-tools` package
-- docker/usr/local/bin/docker-entrypoint.sh: Background process watches `/home/claude/.claude.json` for changes
-- On file modification: Immediately copies to volume at `/home/claude/.claude/.claude.json`
-- Handles editor atomic writes (write to temp file, then move to final location)
-
-**Technical Details:**
-```bash
-# Watch directory (not file directly) to catch atomic writes
-inotifywait -e close_write -e moved_to --include '\.claude\.json$' /home/claude
-```
-
-**Why watch the directory:**
-- Many editors (vim, nano, etc.) don't modify files in-place
-- They write to a temp file and then move it to the final location
-- Watching the directory catches these `moved_to` events
-- Pattern filter ensures we only react to `.claude.json` changes
-
-**Result:**
-- Efficient, responsive config persistence
-- No polling overhead
-- Instant sync on changes
-- Works with all text editors
 
 ### Host Integration Features
 1. **Docker socket mounting** (`/var/run/docker.sock`) - enables container management from within
@@ -798,12 +787,25 @@ The project uses several linters (Hadolint, ShellCheck, Semgrep) that may produc
 
 ## Review Requirements
 
+### Monitoring PR Builds
+After creating or updating a PR:
+1. **Watch the CI build** - Check if the build passes or fails
+2. **Fix build failures** - If CI fails, investigate and fix the issues without waiting to be asked
+3. **Respond to review comments** - Monitor for comments from humans or AI agents (like CodeRabbit)
+4. **Address feedback proactively** - Fix valid issues raised in reviews, push fixes, and update the PR
+5. **Use judgment** - Not all suggestions need to be applied; evaluate each in context (see "Addressing PR Feedback" below)
+
 ### Addressing PR Feedback
 When asked to address PR reviews:
 1. Read ALL comments on the PR - both formal reviews and regular comments can contain actionable feedback (bots like CodeRabbit post suggestions as comments, not reviews)
 2. Do NOT blindly apply suggested changes - evaluate each suggestion in context
 3. If a suggestion seems wrong, unnecessary, or you're unsure about it, ask the user before making changes
 4. Some suggestions may conflict with project conventions or introduce issues - use judgment
+5. **Reply to comments** - Respond directly in the PR thread to each comment:
+   - Fixed: "Fixed in <commit>" or just "Fixed"
+   - Not fixing: Brief reason (e.g., "Not needed - CI passed without this")
+   - Deferred: "Will address separately" or "Out of scope"
+   - Keep responses brief and to the point
 
 ### Code Review Checklist
 When code changes are made:

@@ -1,5 +1,6 @@
 #!/bin/sh
-# Docker entrypoint for dclaude with config persistence
+# Docker entrypoint for dclaude
+# With CLAUDE_CONFIG_DIR set, native Claude stores all config in the mounted volume
 
 # Handle SSH agent proxy setup for macOS (must run as root)
 if [ -n "$SSH_AUTH_SOCK" ] && [ -e "$SSH_AUTH_SOCK" ]; then
@@ -30,10 +31,10 @@ NEED_USER_SWITCH=false
 if [ -S "/var/run/docker.sock" ]; then
     # Use -L to follow symlinks (important on macOS where socket is often symlinked)
     SOCKET_GID=$(stat -L -c '%g' /var/run/docker.sock 2>/dev/null || stat -L -f '%g' /var/run/docker.sock 2>/dev/null)
-    
+
     # Get the GID of our docker group (dynamically, not hardcoded)
     DOCKER_GROUP_GID=$(getent group docker | cut -d: -f3)
-    
+
     if [ -n "$SOCKET_GID" ] && [ -n "$DOCKER_GROUP_GID" ] && [ "$SOCKET_GID" != "$DOCKER_GROUP_GID" ]; then
         # Socket is not in our docker group, we need to adjust
         # Check if we're running as root (can modify groups)
@@ -52,47 +53,9 @@ if [ -S "/var/run/docker.sock" ]; then
     fi
 fi
 
-# Create wrapper script for config persistence as claude user
-cat > /tmp/entrypoint-wrapper.sh << 'WRAPPER_EOF'
-#!/bin/sh
-# This runs as claude user
-
-# Restore .claude.json from volume if it exists
-if [ -f /home/claude/.claude/.claude.json ] && [ ! -f /home/claude/.claude.json ]; then
-    cp /home/claude/.claude/.claude.json /home/claude/.claude.json
-fi
-
-# Set up trap to sync config on exit
-cleanup() {
-    if [ -f /home/claude/.claude.json ]; then
-        cp /home/claude/.claude.json /home/claude/.claude/.claude.json 2>/dev/null || true
-    fi
-}
-trap cleanup EXIT INT TERM
-
-# Start background process to periodically sync config to volume
-(
-    # Initial sync
-    if [ -f /home/claude/.claude.json ]; then
-        cp /home/claude/.claude.json /home/claude/.claude/.claude.json 2>/dev/null || true
-    fi
-
-    # Watch for changes using inotifywait (efficient event-based sync)
-    # We watch the directory because editors/tools often write to temp file and move it
-    while inotifywait -e close_write -e moved_to --include '\.claude\.json$' /home/claude 2>/dev/null; do
-        cp /home/claude/.claude.json /home/claude/.claude/.claude.json 2>/dev/null || true
-    done
-) >/dev/null 2>&1 &
-
-# Execute the actual command
-exec "$@"
-WRAPPER_EOF
-
-chmod +x /tmp/entrypoint-wrapper.sh
-
-# Switch to claude user if needed, otherwise just run wrapper
+# Switch to claude user if needed, otherwise just run the command
 if [ "$NEED_USER_SWITCH" = "true" ]; then
-    exec gosu claude /tmp/entrypoint-wrapper.sh "$@"
+    exec gosu claude "$@"
 else
-    exec /tmp/entrypoint-wrapper.sh "$@"
+    exec "$@"
 fi
