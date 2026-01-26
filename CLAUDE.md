@@ -787,6 +787,14 @@ The project uses several linters (Hadolint, ShellCheck, Semgrep) that may produc
 
 ## Review Requirements
 
+### Monitoring PR Builds
+After creating or updating a PR:
+1. **Watch the CI build** - Check if the build passes or fails
+2. **Fix build failures** - If CI fails, investigate and fix the issues without waiting to be asked
+3. **Respond to review comments** - Monitor for comments from humans or AI agents (like CodeRabbit)
+4. **Address feedback proactively** - Fix valid issues raised in reviews, push fixes, and update the PR
+5. **Use judgment** - Not all suggestions need to be applied; evaluate each in context (see "Addressing PR Feedback" below)
+
 ### Addressing PR Feedback
 When asked to address PR reviews:
 1. Read ALL comments on the PR - both formal reviews and regular comments can contain actionable feedback (bots like CodeRabbit post suggestions as comments, not reviews)
