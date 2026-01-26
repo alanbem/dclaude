@@ -4,24 +4,29 @@
 
 set -euo pipefail
 
-# Configuration
+# Early configuration (before config file loading)
 readonly IMAGE_NAME="${DCLAUDE_REGISTRY:-docker.io}/alanbem/dclaude"
 readonly IMAGE_TAG="${DCLAUDE_TAG:-latest}"
 readonly IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 readonly VOLUME_PREFIX="dclaude"
-readonly DEBUG="${DCLAUDE_DEBUG:-false}"
 readonly QUIET="${DCLAUDE_QUIET:-false}"
 readonly REMOVE_CONTAINER="${DCLAUDE_RM:-false}"
-# Docker socket will be detected dynamically unless overridden
-DOCKER_SOCKET="${DCLAUDE_DOCKER_SOCKET:-}"
-readonly GIT_AUTH_MODE="${DCLAUDE_GIT_AUTH:-auto}"  # auto, agent-forwarding, key-mount, none
 readonly ENABLE_SYSTEM_CONTEXT="${DCLAUDE_SYSTEM_CONTEXT:-true}"  # Inform Claude about dclaude environment
 
-# Chrome configuration (not readonly to allow --port flag override)
+# Docker socket will be detected dynamically unless overridden
+DOCKER_SOCKET="${DCLAUDE_DOCKER_SOCKET:-}"
+
+# Chrome configuration (not readonly to allow --port flag and config file override)
 CHROME_PROFILE="${DCLAUDE_CHROME_PROFILE:-claude}"
-CHROME_PORT="${DCLAUDE_CHROME_PORT:-9222}"
 CHROME_BIN="${DCLAUDE_CHROME_BIN:-}"
 CHROME_FLAGS="${DCLAUDE_CHROME_FLAGS:-}"
+
+# Variables that can be set via .dclaude config file (declared after config loading)
+# - DCLAUDE_NAMESPACE (namespace for volume/container isolation)
+# - DCLAUDE_NETWORK (network mode: host/bridge)
+# - DCLAUDE_GIT_AUTH (git auth mode)
+# - DCLAUDE_DEBUG (enable debug output)
+# - DCLAUDE_CHROME_PORT (chrome devtools port)
 
 # Colors for output (only if terminal supports it)
 if [[ -t 1 ]]; then
@@ -68,6 +73,82 @@ debug() {
     fi
 }
 
+# Find .dclaude config file by walking up directory tree
+find_config_file() {
+    local dir="$PWD"
+    while [[ "$dir" != "/" ]]; do
+        if [[ -f "$dir/.dclaude" ]]; then
+            echo "$dir/.dclaude"
+            return 0
+        fi
+        dir=$(dirname "$dir")
+    done
+    return 1
+}
+
+# Load .dclaude config file (env vars take precedence)
+load_config_file() {
+    local config_file="$1"
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Skip comments and empty lines
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${line// }" ]] && continue
+
+        # Parse key=value
+        if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+            local key="${BASH_REMATCH[1]}"
+            local value="${BASH_REMATCH[2]}"
+            # Trim quotes if present
+            value="${value#\"}"
+            value="${value%\"}"
+            value="${value#\'}"
+            value="${value%\'}"
+
+            # Only set if env var not already set (env var takes precedence)
+            case "$key" in
+                NAMESPACE)
+                    [[ -z "${DCLAUDE_NAMESPACE:-}" ]] && DCLAUDE_NAMESPACE="$value"
+                    ;;
+                NETWORK)
+                    [[ -z "${DCLAUDE_NETWORK:-}" ]] && DCLAUDE_NETWORK="$value"
+                    ;;
+                GIT_AUTH)
+                    [[ -z "${DCLAUDE_GIT_AUTH:-}" ]] && DCLAUDE_GIT_AUTH="$value"
+                    ;;
+                DEBUG)
+                    [[ -z "${DCLAUDE_DEBUG:-}" ]] && DCLAUDE_DEBUG="$value"
+                    ;;
+                CHROME_PORT)
+                    [[ -z "${DCLAUDE_CHROME_PORT:-}" ]] && DCLAUDE_CHROME_PORT="$value"
+                    ;;
+            esac
+        fi
+    done < "$config_file"
+}
+
+# Load config file if found (must happen early, before readonly declarations)
+DCLAUDE_CONFIG_FILE=""
+if DCLAUDE_CONFIG_FILE=$(find_config_file); then
+    load_config_file "$DCLAUDE_CONFIG_FILE"
+fi
+
+# Now set readonly variables that may have been loaded from config file
+readonly DEBUG="${DCLAUDE_DEBUG:-false}"
+readonly GIT_AUTH_MODE="${DCLAUDE_GIT_AUTH:-auto}"  # auto, agent-forwarding, key-mount, none
+readonly NAMESPACE="${DCLAUDE_NAMESPACE:-}"
+CHROME_PORT="${DCLAUDE_CHROME_PORT:-9222}"
+
+# Show config file if loaded (always at info level, details at debug)
+if [[ -n "$DCLAUDE_CONFIG_FILE" ]]; then
+    info "Using config: $DCLAUDE_CONFIG_FILE"
+    if [[ "$DEBUG" == "true" ]]; then
+        [[ -n "$NAMESPACE" ]] && debug "  NAMESPACE=$NAMESPACE"
+        [[ -n "${DCLAUDE_NETWORK:-}" ]] && debug "  NETWORK=$DCLAUDE_NETWORK"
+        [[ -n "${DCLAUDE_GIT_AUTH:-}" ]] && debug "  GIT_AUTH=$DCLAUDE_GIT_AUTH"
+        [[ -n "${DCLAUDE_CHROME_PORT:-}" ]] && debug "  CHROME_PORT=$DCLAUDE_CHROME_PORT"
+    fi
+fi
 
 # Detect platform
 detect_platform() {
@@ -406,10 +487,20 @@ detect_network_capability() {
     echo "$test_result"
 }
 
+# Get volume name (includes namespace if set)
+get_volume_name() {
+    if [[ -n "$NAMESPACE" ]]; then
+        echo "${VOLUME_PREFIX}-${NAMESPACE}-claude"
+    else
+        echo "${VOLUME_PREFIX}-claude"
+    fi
+}
+
 # Create Docker volumes if they don't exist
 create_volumes() {
     # Create essential volume for Claude CLI persistence
-    local volume="${VOLUME_PREFIX}-claude"
+    local volume
+    volume=$(get_volume_name)
 
     if ! docker volume inspect "$volume" &> /dev/null; then
         info "Creating volume: $volume"
@@ -486,12 +577,17 @@ get_host_path() {
     echo "$host_path"
 }
 
-# Generate deterministic container name from path
+# Generate deterministic container name from path (and namespace if set)
 get_container_name() {
     local path="${1:-$HOST_PATH}"
+    local hash_input="${NAMESPACE}:${path}"
     local path_hash
-    path_hash=$(echo -n "$path" | md5sum 2>/dev/null | cut -d' ' -f1 || echo -n "$path" | md5 | cut -d' ' -f1)
-    echo "dclaude-${path_hash:0:12}"
+    path_hash=$(echo -n "$hash_input" | md5sum 2>/dev/null | cut -d' ' -f1 || echo -n "$hash_input" | md5 | cut -d' ' -f1)
+    if [[ -n "$NAMESPACE" ]]; then
+        echo "dclaude-${NAMESPACE}-${path_hash:0:8}"
+    else
+        echo "dclaude-${path_hash:0:12}"
+    fi
 }
 
 # Generate system context prompt for Claude
@@ -668,10 +764,30 @@ When suggesting commands or file operations, you can treat this environment as i
 EOF
 }
 
+# Get SSH proxy container/volume names (includes namespace if set)
+get_ssh_proxy_container_name() {
+    if [[ -n "$NAMESPACE" ]]; then
+        echo "dclaude-${NAMESPACE}-ssh-proxy-$(id -u)"
+    else
+        echo "dclaude-ssh-proxy-$(id -u)"
+    fi
+}
+
+get_ssh_proxy_volume_name() {
+    if [[ -n "$NAMESPACE" ]]; then
+        echo "dclaude-${NAMESPACE}-ssh-proxy"
+    else
+        echo "dclaude-ssh-proxy"
+    fi
+}
+
 # Handle SSH authentication based on DCLAUDE_GIT_AUTH mode
 # Setup SSH proxy container for macOS
 setup_ssh_proxy_container() {
-    local proxy_container="dclaude-ssh-proxy-$(id -u)"
+    local proxy_container
+    local proxy_volume
+    proxy_container=$(get_ssh_proxy_container_name)
+    proxy_volume=$(get_ssh_proxy_volume_name)
 
     # Check if proxy container already exists and is running
     if docker ps -q -f name="^${proxy_container}$" 2>/dev/null | grep -q .; then
@@ -694,7 +810,7 @@ setup_ssh_proxy_container() {
     docker run -d \
         --name "$proxy_container" \
         -v "/run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock:ro" \
-        -v "dclaude-ssh-proxy:/tmp/ssh-proxy" \
+        -v "${proxy_volume}:/tmp/ssh-proxy" \
         --rm \
         alpine:3.19 sh -c '
             # Install socat
@@ -765,10 +881,12 @@ handle_git_auth() {
                     setup_ssh_proxy_container
 
                     # Now mount the proxied socket from the shared volume
-                    docker_args+=(-v "dclaude-ssh-proxy:/tmp/ssh-proxy:ro"
+                    local ssh_proxy_vol
+                    ssh_proxy_vol=$(get_ssh_proxy_volume_name)
+                    docker_args+=(-v "${ssh_proxy_vol}:/tmp/ssh-proxy:ro"
                                  -e "SSH_AUTH_SOCK=/tmp/ssh-proxy/agent")
                     info "SSH agent forwarding enabled via proxy container"
-                    debug "Mounted SSH proxy volume: dclaude-ssh-proxy:/tmp/ssh-proxy"
+                    debug "Mounted SSH proxy volume: ${ssh_proxy_vol}:/tmp/ssh-proxy"
                     ;;
                 windows)
                     warning "SSH agent forwarding not fully supported on Windows"
@@ -847,6 +965,7 @@ is_print_mode() {
     done
     return 1
 }
+
 
 # Main execution
 main() {
@@ -976,12 +1095,30 @@ main() {
         debug "System context disabled (DCLAUDE_SYSTEM_CONTEXT=$ENABLE_SYSTEM_CONTEXT)"
     fi
 
+    # Final environment summary (all variables now resolved)
+    if [[ "$DEBUG" == "true" ]]; then
+        debug "Resolved environment:"
+        debug "  NAMESPACE=${NAMESPACE:-<not set>}"
+        debug "  NETWORK_MODE=$network_mode"
+        debug "  GIT_AUTH=$resolved_git_auth"
+        debug "  DOCKER_SOCKET=${DOCKER_SOCKET:-<not found>}"
+        debug "  CHROME_PORT=${CHROME_PORT:-9222}"
+        debug "  SYSTEM_CONTEXT=$ENABLE_SYSTEM_CONTEXT"
+        debug "  IMAGE=$IMAGE"
+        debug "  HOST_PATH=$HOST_PATH"
+        debug "  PLATFORM=$platform"
+    fi
+
     # Generate container name based on path (for reuse when DCLAUDE_RM=false)
     local container_name=""
     if [[ "$REMOVE_CONTAINER" == "false" ]]; then
         # Create deterministic name from path hash
         container_name=$(get_container_name "$HOST_PATH")
-        debug "Container name: $container_name (path: $HOST_PATH)"
+        if [[ -n "$NAMESPACE" ]]; then
+            debug "Container name: $container_name (namespace: $NAMESPACE, path: $HOST_PATH)"
+        else
+            debug "Container name: $container_name (path: $HOST_PATH)"
+        fi
 
         # Check if container already exists
         if docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
@@ -1056,11 +1193,15 @@ main() {
     # Persistent containers run in background and shouldn't have TTY/stdin attached
 
 
+    # Get namespaced volume name
+    local claude_volume
+    claude_volume=$(get_volume_name)
+
     DOCKER_ARGS+=(
         # Mount current directory
         -v "${HOST_PATH}:${HOST_PATH}"
         # Mount persistent Claude configuration volume
-        -v "${VOLUME_PREFIX}-claude:/home/claude/.claude"
+        -v "${claude_volume}:/home/claude/.claude"
         # Set working directory
         -w "${HOST_PATH}"
         # Network mode
@@ -1921,6 +2062,7 @@ Environment Variables:
   DCLAUDE_TAG                Docker image tag (default: latest)
   DCLAUDE_RM                 Remove container on exit (default: false)
   DCLAUDE_DEBUG              Enable debug output (default: false)
+  DCLAUDE_NAMESPACE          Namespace for isolated credentials/config
   DCLAUDE_GIT_AUTH           SSH auth for Git: auto, agent-forwarding, key-mount, none
   DCLAUDE_NETWORK            Network mode: auto, host, bridge
   DCLAUDE_DOCKER_SOCKET      Override Docker socket path
@@ -1929,6 +2071,14 @@ Environment Variables:
   DCLAUDE_CHROME_PROFILE     Chrome profile name (default: claude)
   DCLAUDE_CHROME_PORT        Chrome debugging port (default: 9222)
   DCLAUDE_CHROME_FLAGS       Additional Chrome flags (default: empty)
+
+Configuration File (.dclaude):
+  Create a .dclaude file at project root to configure dclaude for that tree:
+    NAMESPACE=mycompany
+    NETWORK=host
+    DEBUG=true
+  dclaude walks up the directory tree to find .dclaude files.
+  Environment variables override .dclaude settings.
 
 Examples:
   # Start new Claude session (auto-generated session name)
@@ -1945,6 +2095,10 @@ Examples:
 
   # Start with ephemeral container (removed on exit)
   DCLAUDE_RM=true dclaude
+
+  # Use namespace for isolated credentials (personal vs company)
+  DCLAUDE_NAMESPACE=mycompany dclaude
+  # Or create .dclaude file: echo "NAMESPACE=mycompany" > ~/projects/mycompany/.dclaude
 
   # Update image and restart container
   dclaude pull                                   # Pull latest image

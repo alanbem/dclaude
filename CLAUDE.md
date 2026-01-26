@@ -126,8 +126,44 @@ The dclaude script uses a strict hierarchy for output messages to provide predic
 - **tini**: Minimal init system (PID 1) that reaps zombie processes created by docker exec commands
 - **docker/usr/local/bin/docker-entrypoint.sh**: Entrypoint script that sets up SSH agent proxy when needed (socat bridge for macOS permissions)
 - **dclaude script**: Launcher handling platform detection, volume management, path mirroring
-- **Docker volumes**: `dclaude-claude` for persistent Claude CLI data
+- **Docker volumes**: `dclaude-claude` (or `dclaude-{namespace}-claude` with namespace) for persistent Claude CLI data
 - **System Context**: Automatic environment awareness via `--append-system-prompt`
+
+### Configuration File System (`.dclaude`)
+
+dclaude supports a `.dclaude` config file that applies settings recursively to a directory tree.
+
+**Discovery:** `find_config_file()` walks up from `$PWD` looking for `.dclaude` file (not directory).
+
+**Parsing:** `load_config_file()` reads key=value pairs, skipping comments (#) and empty lines.
+
+**Precedence:** Environment variable > `.dclaude` file > default value
+
+**Supported variables:**
+- `NAMESPACE` - Volume/container namespace for isolation
+- `NETWORK` - Network mode override (host/bridge)
+- `GIT_AUTH` - Git auth mode override
+- `DEBUG` - Enable debug output
+- `CHROME_PORT` - Chrome DevTools port
+
+**Coexistence:** `.dclaude` (file) can exist alongside `.dclaude/` (directory used for Chrome profiles).
+
+### Namespace Isolation
+
+Namespaces provide complete isolation of credentials, settings, and containers.
+
+**Volume naming:**
+- Default: `dclaude-claude`
+- With namespace: `dclaude-{namespace}-claude`
+
+**Container naming:**
+- Hash input includes namespace: `${NAMESPACE}:${path}`
+- With namespace: `dclaude-{namespace}-{hash:8}`
+- Without namespace: `dclaude-{hash:12}`
+
+**SSH proxy naming (macOS):**
+- Default: `dclaude-ssh-proxy-{uid}`, volume `dclaude-ssh-proxy`
+- With namespace: `dclaude-{namespace}-ssh-proxy-{uid}`, volume `dclaude-{namespace}-ssh-proxy`
 
 ### Claude Code Installation
 
