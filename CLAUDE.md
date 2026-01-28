@@ -593,6 +593,50 @@ set-option -g detach-on-destroy on
 - The `detect_tty_flags()` function returns `-i -t` flags for interactive mode, empty for non-interactive
 - The `is_print_mode()` function checks for `-p`/`--print` as separate arguments (safe from string matching)
 
+## iTerm2 Shell Integration
+
+dclaude includes [iTerm2 Shell Integration](https://iterm2.com/documentation-shell-integration.html) for enhanced terminal experience on macOS.
+
+### How It Works
+
+**Automatic activation:**
+- Script baked into image at `/home/claude/.iterm2_shell_integration.bash`
+- Sourced in `~/.bashrc` with opt-out check
+- Only activates for interactive shells in iTerm2 (script self-checks environment)
+- Works inside tmux via `ITERM_ENABLE_SHELL_INTEGRATION_WITH_TMUX=1` env var
+
+**Features enabled:**
+- URL handling (click URLs to open in Mac browser)
+- `imgcat` command (display images inline)
+- `it2copy` command (copy to Mac clipboard)
+- Shell marks (navigate between prompts)
+- Command status tracking
+
+### Configuration
+
+**Opt-out:**
+```bash
+DCLAUDE_ITERM2=false dclaude
+```
+
+**Environment variables:**
+- `DCLAUDE_ITERM2` - Set to `false` to disable (default: `true`)
+- `ITERM_ENABLE_SHELL_INTEGRATION_WITH_TMUX` - Set by dclaude to enable in tmux sessions
+
+### Technical Details
+
+**Script location:** `/home/claude/.iterm2_shell_integration.bash` (baked into image)
+
+**Bashrc sourcing:**
+```bash
+[[ "${DCLAUDE_ITERM2:-true}" != "false" && -f ~/.iterm2_shell_integration.bash ]] && source ~/.iterm2_shell_integration.bash
+```
+
+**Why tmux requires special handling:**
+The iTerm2 script by default skips tmux sessions (checks `$TERM` for `screen` or `tmux-256color`). Setting `ITERM_ENABLE_SHELL_INTEGRATION_WITH_TMUX=1` bypasses this check, allowing integration to work inside dclaude's tmux-managed sessions.
+
+**Non-iTerm2 terminals:** The script is safe for other terminals - it checks the environment and does nothing if iTerm2 isn't detected.
+
 ## Chrome DevTools Integration
 
 The `dclaude chrome` subcommand provides seamless integration between Claude and Chrome DevTools via the Model Context Protocol (MCP).

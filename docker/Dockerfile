@@ -114,9 +114,11 @@ USER claude
 WORKDIR /home/claude
 
 # Configure npm to use user directory for global packages
+# Source iTerm2 shell integration if not disabled (only activates in iTerm2)
 RUN npm config set prefix /home/claude/.npm-global \
     && echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.bashrc \
     && echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.bashrc \
+    && echo '[[ "${DCLAUDE_ITERM2:-true}" != "false" && -f ~/.iterm2_shell_integration.bash ]] && source ~/.iterm2_shell_integration.bash' >> ~/.bashrc \
     && echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.profile \
     && echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.profile
 
@@ -148,9 +150,10 @@ USER root
 # Declare volumes for persistent data
 VOLUME ["/home/claude/.claude"]
 
-# Copy entrypoint script and tmux config (paths mirror image structure)
+# Copy entrypoint script, tmux config, and shell integrations (paths mirror image structure)
 COPY --chown=claude:claude usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY --chown=claude:claude home/claude/.tmux.conf /home/claude/.tmux.conf
+COPY --chown=claude:claude home/claude/.iterm2_shell_integration.bash /home/claude/.iterm2_shell_integration.bash
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Set working directory to workspace
@@ -170,7 +173,8 @@ ENV CLAUDE_UNSAFE_TRUST_WORKSPACE=true \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
     LANGUAGE=en_US:en \
-    GIT_CONFIG_GLOBAL=/home/claude/.claude/.gitconfig
+    GIT_CONFIG_GLOBAL=/home/claude/.claude/.gitconfig \
+    ITERM_ENABLE_SHELL_INTEGRATION_WITH_TMUX=1
 
 # Labels
 LABEL maintainer="alanbem" \
