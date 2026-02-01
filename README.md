@@ -175,6 +175,7 @@ DCLAUDE_SYSTEM_CONTEXT=false dclaude
 | `DCLAUDE_NAMESPACE` | (none) | Namespace for isolated credentials/config |
 | `DCLAUDE_NETWORK` | `auto` | Network mode: `auto`, `host`, `bridge` |
 | `DCLAUDE_GIT_AUTH` | `auto` | SSH auth: `auto`, `agent-forwarding`, `key-mount`, `none` |
+| `DCLAUDE_MOUNT_ROOT` | (working dir) | Mount parent directory for sibling access |
 | `DCLAUDE_DEBUG` | `false` | Enable debug output |
 | `DCLAUDE_QUIET` | `false` | Suppress info messages |
 | `DCLAUDE_NO_UPDATE` | `false` | Skip image update check |
@@ -200,6 +201,7 @@ dclaude walks up the directory tree to find `.dclaude` files. Any dclaude sessio
 | `NAMESPACE` | Isolate credentials/config (see Namespace Isolation) |
 | `NETWORK` | Network mode (`host`, `bridge`) |
 | `GIT_AUTH` | Git auth mode |
+| `MOUNT_ROOT` | Mount parent directory (absolute or relative path, default: working dir) |
 | `DEBUG` | Enable debug output (`true`, `false`) |
 | `CHROME_PORT` | Chrome DevTools port |
 
@@ -237,6 +239,41 @@ Each namespace gets its own:
 - Claude settings and preferences
 - Git configuration
 - Container instance
+
+## Mount Root (Parent Directory Access)
+
+By default, dclaude only mounts the current working directory. Use `MOUNT_ROOT` to mount a parent directory, enabling access to sibling directories.
+
+**Use case:** You're working in a subdirectory but need access to related projects:
+
+```
+/Users/alan/projects/mycompany/
+├── shared-libs/          # Common libraries
+├── api-service/          # API backend
+├── web-app/              # Frontend
+└── infrastructure/
+    └── terraform/        # ← You're here, but need access to siblings
+```
+
+**Option 1: Using `.dclaude` file (recommended)**
+```bash
+# Create config at parent level
+echo "MOUNT_ROOT=." > ~/projects/mycompany/.dclaude
+
+# Or use relative path from subdirectory
+echo "MOUNT_ROOT=../.." > ~/projects/mycompany/infrastructure/terraform/.dclaude
+```
+
+**Option 2: Using environment variable**
+```bash
+# Relative path (from working directory)
+DCLAUDE_MOUNT_ROOT=../.. dclaude
+
+# Absolute path
+DCLAUDE_MOUNT_ROOT=/Users/alan/projects/mycompany dclaude
+```
+
+Now Claude can see and work with all sibling directories while your working directory remains `terraform/`.
 
 ## Networking
 

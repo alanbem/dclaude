@@ -145,6 +145,7 @@ dclaude supports a `.dclaude` config file that applies settings recursively to a
 - `GIT_AUTH` - Git auth mode override
 - `DEBUG` - Enable debug output
 - `CHROME_PORT` - Chrome DevTools port
+- `MOUNT_ROOT` - Mount parent directory for sibling access
 
 **Coexistence:** `.dclaude` (file) can exist alongside `.dclaude/` (directory used for Chrome profiles).
 
@@ -164,6 +165,50 @@ Namespaces provide complete isolation of credentials, settings, and containers.
 **SSH proxy naming (macOS):**
 - Default: `dclaude-ssh-proxy-{uid}`, volume `dclaude-ssh-proxy`
 - With namespace: `dclaude-{namespace}-ssh-proxy-{uid}`, volume `dclaude-{namespace}-ssh-proxy`
+
+### Mount Root (Parent Directory Access)
+
+By default, dclaude mounts only the current working directory. The `MOUNT_ROOT` option allows mounting a parent directory instead, enabling access to sibling directories.
+
+**Use Case Example:**
+```
+/Users/alan/projects/gravitylending/
+├── local-reverse-proxy/    # Legacy SSL setup
+├── wf-docker/              # Legacy docker-compose configs
+├── gravity-image/          # Custom Docker images
+└── wf-services/
+    └── titles-service/     # ← Claude's working directory
+```
+
+Without `MOUNT_ROOT`, Claude can only see `titles-service/`. With `MOUNT_ROOT=../..`, Claude can access all sibling directories.
+
+**Configuration:**
+
+Environment variable:
+```bash
+DCLAUDE_MOUNT_ROOT=.. dclaude                    # Relative path (parent)
+DCLAUDE_MOUNT_ROOT=../.. dclaude                 # Two levels up
+DCLAUDE_MOUNT_ROOT=/path/to/parent dclaude       # Absolute path
+```
+
+Config file (`.dclaude`):
+```bash
+MOUNT_ROOT=..
+# or
+MOUNT_ROOT=/Users/alan/projects/gravitylending
+```
+
+**Behavior:**
+- `MOUNT_ROOT` specifies which directory to mount in the container
+- Working directory (`-w`) remains the current directory
+- Relative paths are resolved relative to the current directory
+- Validation ensures working directory is within mount root
+
+**Implementation:**
+- Function: `get_mount_root()` in dclaude script
+- Accepts absolute or relative paths
+- Returns resolved absolute path
+- Errors if working directory is not under mount root
 
 ### Claude Code Installation
 
