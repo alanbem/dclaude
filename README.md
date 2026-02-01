@@ -246,7 +246,7 @@ By default, dclaude only mounts the current working directory. Use `MOUNT_ROOT` 
 
 **Use case:** You're working in a subdirectory but need access to related projects:
 
-```
+```text
 /Users/alan/projects/mycompany/
 ├── shared-libs/          # Common libraries
 ├── api-service/          # API backend

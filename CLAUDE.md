@@ -171,7 +171,7 @@ Namespaces provide complete isolation of credentials, settings, and containers.
 By default, dclaude mounts only the current working directory. The `MOUNT_ROOT` option allows mounting a parent directory instead, enabling access to sibling directories.
 
 **Use Case Example:**
-```
+```text
 /Users/alan/projects/gravitylending/
 ├── local-reverse-proxy/    # Legacy SSL setup
 ├── wf-docker/              # Legacy docker-compose configs
