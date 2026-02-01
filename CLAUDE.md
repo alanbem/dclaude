@@ -147,7 +147,7 @@ dclaude supports a `.dclaude` config file that applies settings recursively to a
 - `CHROME_PORT` - Chrome DevTools port
 - `MOUNT_ROOT` - Mount parent directory for sibling access
 
-**Coexistence:** `.dclaude` (file) can exist alongside `.dclaude/` (directory used for Chrome profiles).
+**Note:** Chrome profiles are stored in `.dclaude.d/` directory, keeping `.dclaude` available for the config file.
 
 ### Namespace Isolation
 
@@ -623,7 +623,7 @@ DCLAUDE_CHROME_PROFILE=testing dclaude chrome
 ### What `dclaude chrome` Does
 
 1. **Auto-detects Chrome** binary (macOS, Linux, Windows supported)
-2. **Creates profile directory** at `.dclaude/chrome/profiles/<profile-name>/`
+2. **Creates profile directory** at `.dclaude.d/chrome/profiles/<profile-name>/`
 3. **Checks/creates `.mcp.json`** with `chrome-devtools-mcp` server configuration
 4. **Validates port consistency** between Chrome launch and `.mcp.json` config
 5. **Launches Chrome** with remote debugging on specified port (default: 9222)
@@ -632,7 +632,7 @@ DCLAUDE_CHROME_PROFILE=testing dclaude chrome
 ### Chrome Launch Flags
 
 **Default flags (always set):**
-- `--user-data-dir=.dclaude/chrome/profiles/<profile>/` - Isolated profile per project
+- `--user-data-dir=.dclaude.d/chrome/profiles/<profile>/` - Isolated profile per project
 - `--remote-debugging-port=<port>` - Enable DevTools Protocol (default: 9222)
 - `--no-first-run` - Skip first-run wizard
 - `--no-default-browser-check` - Don't ask to be default browser
@@ -674,7 +674,8 @@ This ensures you're aware of configuration mismatches without blocking Chrome fr
 ```
 project-root/
 ├── .mcp.json                    # MCP server configuration
-└── .dclaude/
+├── .dclaude                     # Config file (optional)
+└── .dclaude.d/
     └── chrome/
         └── profiles/
             ├── claude/          # Default profile

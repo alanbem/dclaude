@@ -1574,7 +1574,7 @@ cmd_chrome() {
     fi
 
     # 2. Setup profile directory
-    local profile_dir="$HOST_PATH/.dclaude/chrome/profiles/$CHROME_PROFILE"
+    local profile_dir="$HOST_PATH/.dclaude.d/chrome/profiles/$CHROME_PROFILE"
     mkdir -p "$profile_dir"
     debug "Profile directory: $profile_dir"
 
