@@ -28,7 +28,6 @@ CHROME_FLAGS="${DCLAUDE_CHROME_FLAGS:-}"
 # - DCLAUDE_DEBUG (enable debug output)
 # - DCLAUDE_CHROME_PORT (chrome devtools port)
 # - DCLAUDE_MOUNT_ROOT (mount a parent directory instead of working directory)
-# - USE_AS_MOUNT_ROOT (use config file's directory as mount root)
 
 # Colors for output (only if terminal supports it)
 if [[ -t 1 ]]; then
@@ -125,12 +124,15 @@ load_config_file() {
                     [[ -z "${DCLAUDE_CHROME_PORT:-}" ]] && DCLAUDE_CHROME_PORT="$value"
                     ;;
                 MOUNT_ROOT)
-                    [[ -z "${DCLAUDE_MOUNT_ROOT:-}" ]] && DCLAUDE_MOUNT_ROOT="$value"
-                    ;;
-                USE_AS_MOUNT_ROOT)
-                    # Transparently convert to MOUNT_ROOT using config file's directory
-                    if [[ -z "${DCLAUDE_MOUNT_ROOT:-}" ]] && [[ "$value" == "true" ]]; then
-                        DCLAUDE_MOUNT_ROOT=$(dirname "$config_file")
+                    if [[ -z "${DCLAUDE_MOUNT_ROOT:-}" ]]; then
+                        # Resolve relative paths relative to config file's directory
+                        if [[ "$value" != /* ]]; then
+                            local config_dir
+                            config_dir=$(dirname "$config_file")
+                            DCLAUDE_MOUNT_ROOT=$(cd "$config_dir" && cd "$value" 2>/dev/null && pwd)
+                        else
+                            DCLAUDE_MOUNT_ROOT="$value"
+                        fi
                     fi
                     ;;
             esac
@@ -2148,8 +2150,8 @@ Configuration File (.dclaude):
     NAMESPACE=mycompany
     NETWORK=host
     DEBUG=true
-    MOUNT_ROOT=..          # Mount parent directory (relative or absolute path)
-    USE_AS_MOUNT_ROOT=true # Mount config file's directory for sibling access
+    MOUNT_ROOT=.           # Mount config file's directory
+    MOUNT_ROOT=..          # Mount parent of config file's directory
   dclaude walks up the directory tree to find .dclaude files.
   Environment variables override .dclaude settings.
 

@@ -201,8 +201,7 @@ dclaude walks up the directory tree to find `.dclaude` files. Any dclaude sessio
 | `NAMESPACE` | Isolate credentials/config (see Namespace Isolation) |
 | `NETWORK` | Network mode (`host`, `bridge`) |
 | `GIT_AUTH` | Git auth mode |
-| `MOUNT_ROOT` | Mount parent directory (absolute or relative path, default: working dir) |
-| `USE_AS_MOUNT_ROOT` | Set to `true` to mount config file's directory |
+| `MOUNT_ROOT` | Mount directory (relative to config file, or absolute path) |
 | `DEBUG` | Enable debug output (`true`, `false`) |
 | `CHROME_PORT` | Chrome DevTools port |
 
@@ -258,11 +257,11 @@ By default, dclaude only mounts the current working directory. Use `MOUNT_ROOT` 
 
 **Option 1: Using `.dclaude` file (recommended)**
 ```bash
-# Create config at parent level - simplest approach
-echo "USE_AS_MOUNT_ROOT=true" > ~/projects/mycompany/.dclaude
+# Create config at the directory you want as mount root
+echo "MOUNT_ROOT=." > ~/projects/mycompany/.dclaude
 
-# Or use explicit path (relative or absolute)
-echo "MOUNT_ROOT=/path/to/parent" > ~/projects/mycompany/.dclaude
+# Relative paths are resolved from config file's directory
+echo "MOUNT_ROOT=.." > ~/projects/mycompany/subdir/.dclaude  # mounts mycompany/
 ```
 
 **Option 2: Using environment variable**

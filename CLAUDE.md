@@ -145,8 +145,7 @@ dclaude supports a `.dclaude` config file that applies settings recursively to a
 - `GIT_AUTH` - Git auth mode override
 - `DEBUG` - Enable debug output
 - `CHROME_PORT` - Chrome DevTools port
-- `MOUNT_ROOT` - Mount parent directory for sibling access (explicit path)
-- `USE_AS_MOUNT_ROOT` - Mount config file's directory (`true` to enable)
+- `MOUNT_ROOT` - Mount directory (relative to config file, or absolute path)
 
 **Note:** Chrome profiles are stored in `.dclaude.d/` directory, keeping `.dclaude` available for the config file.
 
@@ -185,22 +184,18 @@ Without `MOUNT_ROOT`, Claude can only see `titles-service/`. With `MOUNT_ROOT=..
 
 **Configuration:**
 
-Config file (`.dclaude`) - simplest approach:
+Config file (`.dclaude`) - relative paths resolve from config file's directory:
 ```bash
-# Place .dclaude at the directory you want as mount root
-USE_AS_MOUNT_ROOT=true
-```
+# Mount the directory where .dclaude lives
+MOUNT_ROOT=.
 
-Explicit path (relative or absolute):
-```bash
+# Mount parent of config file's directory
 MOUNT_ROOT=..
-# or
-MOUNT_ROOT=/Users/alan/projects/gravitylending
 ```
 
-Environment variable:
+Environment variable - relative paths resolve from working directory:
 ```bash
-DCLAUDE_MOUNT_ROOT=.. dclaude                    # Relative path (parent)
+DCLAUDE_MOUNT_ROOT=.. dclaude                    # Relative to working dir
 DCLAUDE_MOUNT_ROOT=/path/to/parent dclaude       # Absolute path
 ```
 
