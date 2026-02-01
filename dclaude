@@ -28,6 +28,7 @@ CHROME_FLAGS="${DCLAUDE_CHROME_FLAGS:-}"
 # - DCLAUDE_DEBUG (enable debug output)
 # - DCLAUDE_CHROME_PORT (chrome devtools port)
 # - DCLAUDE_MOUNT_ROOT (mount a parent directory instead of working directory)
+# - USE_AS_MOUNT_ROOT (use config file's directory as mount root)
 
 # Colors for output (only if terminal supports it)
 if [[ -t 1 ]]; then
@@ -125,6 +126,12 @@ load_config_file() {
                     ;;
                 MOUNT_ROOT)
                     [[ -z "${DCLAUDE_MOUNT_ROOT:-}" ]] && DCLAUDE_MOUNT_ROOT="$value"
+                    ;;
+                USE_AS_MOUNT_ROOT)
+                    # Transparently convert to MOUNT_ROOT using config file's directory
+                    if [[ -z "${DCLAUDE_MOUNT_ROOT:-}" ]] && [[ "$value" == "true" ]]; then
+                        DCLAUDE_MOUNT_ROOT=$(dirname "$config_file")
+                    fi
                     ;;
             esac
         fi
@@ -2141,7 +2148,8 @@ Configuration File (.dclaude):
     NAMESPACE=mycompany
     NETWORK=host
     DEBUG=true
-    MOUNT_ROOT=..          # Mount parent directory for sibling access
+    MOUNT_ROOT=..          # Mount parent directory (relative or absolute path)
+    USE_AS_MOUNT_ROOT=true # Mount config file's directory for sibling access
   dclaude walks up the directory tree to find .dclaude files.
   Environment variables override .dclaude settings.
 
