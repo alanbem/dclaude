@@ -1242,6 +1242,7 @@ main() {
                 [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
                 [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
                 [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
+                [[ -n "${DCLAUDE_ITERM2:-}" ]] && exec_env_args+=(-e "DCLAUDE_ITERM2=${DCLAUDE_ITERM2}")
 
                 debug "Creating new tmux session running Claude"
                 debug "Claude args count: ${#claude_args[@]}, user args: $*"
@@ -1319,6 +1320,11 @@ main() {
         DOCKER_ARGS+=(-e "COLORTERM=${COLORTERM}")
     fi
 
+    # Pass through iTerm2 integration opt-out if set
+    if [[ -n "${DCLAUDE_ITERM2:-}" ]]; then
+        DOCKER_ARGS+=(-e "DCLAUDE_ITERM2=${DCLAUDE_ITERM2}")
+    fi
+
     # Mount Docker socket if detected (detection done earlier for system context)
     if [[ -n "$DOCKER_SOCKET" ]] && [[ -S "$DOCKER_SOCKET" ]]; then
         DOCKER_ARGS+=(-v "${DOCKER_SOCKET}:/var/run/docker.sock")
@@ -1389,6 +1395,7 @@ main() {
             [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
             [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
             [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
+            [[ -n "${DCLAUDE_ITERM2:-}" ]] && exec_env_args+=(-e "DCLAUDE_ITERM2=${DCLAUDE_ITERM2}")
 
             debug "Creating new tmux session running Claude"
             debug "Claude args count: ${#claude_args[@]}, user args: $*"
@@ -1537,6 +1544,7 @@ cmd_attach() {
     [[ -n "${TERM_PROGRAM_VERSION:-}" ]] && exec_env_args+=(-e "TERM_PROGRAM_VERSION=${TERM_PROGRAM_VERSION}")
     [[ -n "${TERM_SESSION_ID:-}" ]] && exec_env_args+=(-e "TERM_SESSION_ID=${TERM_SESSION_ID}")
     [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
+    [[ -n "${DCLAUDE_ITERM2:-}" ]] && exec_env_args+=(-e "DCLAUDE_ITERM2=${DCLAUDE_ITERM2}")
 
     # Attach to existing session
     info "Attaching to session: $session_name"

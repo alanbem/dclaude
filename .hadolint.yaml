@@ -13,6 +13,9 @@ ignored:
   # Entrypoint starts as root for permission setup, then uses gosu to switch to claude user
   - DL3002  # Last USER should not be root
 
+  # Single quotes are intentional - expressions should expand at runtime, not build time
+  - SC2016  # Expressions don't expand in single quotes
+
 trustedRegistries:
   - docker.io
   - ghcr.io

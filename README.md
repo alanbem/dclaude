@@ -151,6 +151,21 @@ dclaude chrome                    # Launch Chrome with DevTools
 dclaude                           # Claude can now interact with the browser
 ```
 
+### iTerm2 Shell Integration
+
+If you use iTerm2 on macOS, dclaude automatically enables [iTerm2 Shell Integration](https://iterm2.com/documentation-shell-integration.html):
+
+- **Click URLs in output** - Opens in your Mac's browser
+- **imgcat** - Display images inline in terminal
+- **it2copy** - Copy to Mac clipboard from inside container
+- **Marks** - Navigate between command prompts
+
+This only activates when running in iTerm2. To disable:
+
+```bash
+DCLAUDE_ITERM2=false dclaude
+```
+
 ### System Context
 
 dclaude automatically tells Claude about its container environment so it can give better suggestions:
@@ -180,6 +195,7 @@ DCLAUDE_SYSTEM_CONTEXT=false dclaude
 | `DCLAUDE_QUIET` | `false` | Suppress info messages |
 | `DCLAUDE_NO_UPDATE` | `false` | Skip image update check |
 | `DCLAUDE_SYSTEM_CONTEXT` | `true` | Inform Claude about container environment |
+| `DCLAUDE_ITERM2` | `true` | Enable iTerm2 shell integration (only affects iTerm2) |
 
 ## Configuration File
 
