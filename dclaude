@@ -1214,6 +1214,16 @@ main() {
                 done
             fi
 
+            # Ensure SSH proxy is running if container uses agent forwarding (macOS)
+            if [[ "$platform" == "darwin" ]]; then
+                local container_ssh_sock
+                container_ssh_sock=$(docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' "$container_name" 2>/dev/null | grep "^SSH_AUTH_SOCK=" | cut -d= -f2)
+                if [[ "$container_ssh_sock" == "/tmp/ssh-proxy/agent" ]]; then
+                    debug "Container uses SSH agent forwarding, ensuring proxy is running"
+                    setup_ssh_proxy_container
+                fi
+            fi
+
             # Check if interactive (TTY available) and not in print mode
             if [[ -n "$tty_flags" ]] && ! should_skip_tmux "${claude_args[@]}" "$@"; then
                 # Interactive and not print mode - use tmux for session management
