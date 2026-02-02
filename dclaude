@@ -27,6 +27,7 @@ CHROME_FLAGS="${DCLAUDE_CHROME_FLAGS:-}"
 # - DCLAUDE_GIT_AUTH (git auth mode)
 # - DCLAUDE_DEBUG (enable debug output)
 # - DCLAUDE_CHROME_PORT (chrome devtools port)
+# - DCLAUDE_MOUNT_ROOT (mount a parent directory instead of working directory)
 
 # Colors for output (only if terminal supports it)
 if [[ -t 1 ]]; then
@@ -122,6 +123,18 @@ load_config_file() {
                 CHROME_PORT)
                     [[ -z "${DCLAUDE_CHROME_PORT:-}" ]] && DCLAUDE_CHROME_PORT="$value"
                     ;;
+                MOUNT_ROOT)
+                    if [[ -z "${DCLAUDE_MOUNT_ROOT:-}" ]]; then
+                        # Resolve relative paths relative to config file's directory
+                        if [[ "$value" != /* ]]; then
+                            local config_dir
+                            config_dir=$(dirname "$config_file")
+                            DCLAUDE_MOUNT_ROOT=$(cd "$config_dir" && cd "$value" 2>/dev/null && pwd)
+                        else
+                            DCLAUDE_MOUNT_ROOT="$value"
+                        fi
+                    fi
+                    ;;
             esac
         fi
     done < "$config_file"
@@ -147,6 +160,7 @@ if [[ -n "$DCLAUDE_CONFIG_FILE" ]]; then
         [[ -n "${DCLAUDE_NETWORK:-}" ]] && debug "  NETWORK=$DCLAUDE_NETWORK"
         [[ -n "${DCLAUDE_GIT_AUTH:-}" ]] && debug "  GIT_AUTH=$DCLAUDE_GIT_AUTH"
         [[ -n "${DCLAUDE_CHROME_PORT:-}" ]] && debug "  CHROME_PORT=$DCLAUDE_CHROME_PORT"
+        [[ -n "${DCLAUDE_MOUNT_ROOT:-}" ]] && debug "  MOUNT_ROOT=$DCLAUDE_MOUNT_ROOT"
     fi
 fi
 
@@ -577,6 +591,55 @@ get_host_path() {
     echo "$host_path"
 }
 
+# Compute mount root path from DCLAUDE_MOUNT_ROOT
+# Supports: absolute paths, relative paths (../, ../../, etc.)
+# Returns: Absolute path to mount root, or HOST_PATH if not set
+get_mount_root() {
+    local host_path="$1"
+    local mount_root="${DCLAUDE_MOUNT_ROOT:-}"
+
+    # If not set, use host path (current behavior)
+    if [[ -z "$mount_root" ]]; then
+        echo "$host_path"
+        return 0
+    fi
+
+    local resolved_root
+
+    # Handle relative paths (resolve relative to host_path)
+    if [[ "$mount_root" != /* ]]; then
+        # Relative path - resolve it
+        resolved_root=$(cd "$host_path" && cd "$mount_root" 2>/dev/null && pwd) || {
+            error "Mount root path not accessible: $mount_root (relative to $host_path)"
+            exit 1
+        }
+    else
+        # Absolute path - use directly
+        resolved_root="$mount_root"
+    fi
+
+    # Validate mount root exists
+    if [[ ! -d "$resolved_root" ]]; then
+        error "Mount root directory does not exist: $resolved_root"
+        exit 1
+    fi
+
+    # Validate that host_path is under mount_root
+    # Use realpath to normalize paths for comparison
+    local real_host real_root
+    real_host=$(cd "$host_path" && pwd -P)
+    real_root=$(cd "$resolved_root" && pwd -P)
+
+    if [[ "$real_host" != "$real_root" && "$real_host" != "$real_root"/* ]]; then
+        error "Working directory is not under mount root"
+        error "  Working directory: $real_host"
+        error "  Mount root: $real_root"
+        exit 1
+    fi
+
+    echo "$resolved_root"
+}
+
 # Generate deterministic container name from path (and namespace if set)
 get_container_name() {
     local path="${1:-$HOST_PATH}"
@@ -976,6 +1039,9 @@ main() {
 
     info "Verifying environment..."
     debug "Host path: $HOST_PATH"
+    if [[ "$MOUNT_ROOT" != "$HOST_PATH" ]]; then
+        debug "Mount root: $MOUNT_ROOT"
+    fi
 
     # Check prerequisites
     check_docker
@@ -1108,6 +1174,9 @@ main() {
         debug "  SYSTEM_CONTEXT=$ENABLE_SYSTEM_CONTEXT"
         debug "  IMAGE=$IMAGE"
         debug "  HOST_PATH=$HOST_PATH"
+        if [[ "$MOUNT_ROOT" != "$HOST_PATH" ]]; then
+            debug "  MOUNT_ROOT=$MOUNT_ROOT"
+        fi
         debug "  PLATFORM=$platform"
     fi
 
@@ -1200,11 +1269,11 @@ main() {
     claude_volume=$(get_volume_name)
 
     DOCKER_ARGS+=(
-        # Mount current directory
-        -v "${HOST_PATH}:${HOST_PATH}"
+        # Mount directory tree (mount root allows access to parent directories)
+        -v "${MOUNT_ROOT}:${MOUNT_ROOT}"
         # Mount persistent Claude configuration volume
         -v "${claude_volume}:/home/claude/.claude"
-        # Set working directory
+        # Set working directory (within the mounted tree)
         -w "${HOST_PATH}"
         # Network mode
         --network="$network_mode"
@@ -1514,7 +1583,7 @@ cmd_chrome() {
     fi
 
     # 2. Setup profile directory
-    local profile_dir="$HOST_PATH/.dclaude/chrome/profiles/$CHROME_PROFILE"
+    local profile_dir="$HOST_PATH/.dclaude.d/chrome/profiles/$CHROME_PROFILE"
     mkdir -p "$profile_dir"
     debug "Profile directory: $profile_dir"
 
@@ -1989,8 +2058,9 @@ cmd_git() {
     exit 0
 }
 
-# Initialize HOST_PATH once for all commands
+# Initialize HOST_PATH and MOUNT_ROOT once for all commands
 HOST_PATH=$(get_host_path)
+MOUNT_ROOT=$(get_mount_root "$HOST_PATH")
 
 # Handle subcommands
 if [[ $# -gt 0 ]]; then
@@ -2067,6 +2137,7 @@ Environment Variables:
   DCLAUDE_NAMESPACE          Namespace for isolated credentials/config
   DCLAUDE_GIT_AUTH           SSH auth for Git: auto, agent-forwarding, key-mount, none
   DCLAUDE_NETWORK            Network mode: auto, host, bridge
+  DCLAUDE_MOUNT_ROOT         Mount parent directory (absolute or relative path)
   DCLAUDE_DOCKER_SOCKET      Override Docker socket path
   DCLAUDE_TMUX_SESSION       Custom tmux session name (default: claude-TIMESTAMP)
   DCLAUDE_CHROME_BIN         Chrome executable path (auto-detected if not set)
@@ -2079,6 +2150,8 @@ Configuration File (.dclaude):
     NAMESPACE=mycompany
     NETWORK=host
     DEBUG=true
+    MOUNT_ROOT=.           # Mount config file's directory
+    MOUNT_ROOT=..          # Mount parent of config file's directory
   dclaude walks up the directory tree to find .dclaude files.
   Environment variables override .dclaude settings.
 
@@ -2101,6 +2174,11 @@ Examples:
   # Use namespace for isolated credentials (personal vs company)
   DCLAUDE_NAMESPACE=mycompany dclaude
   # Or create .dclaude file: echo "NAMESPACE=mycompany" > ~/projects/mycompany/.dclaude
+
+  # Mount parent directory to access sibling directories
+  DCLAUDE_MOUNT_ROOT=.. dclaude                    # Relative path
+  DCLAUDE_MOUNT_ROOT=/Users/alan/projects dclaude  # Absolute path
+  # Or in .dclaude file: MOUNT_ROOT=..
 
   # Update image and restart container
   dclaude pull                                   # Pull latest image

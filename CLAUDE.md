@@ -145,8 +145,9 @@ dclaude supports a `.dclaude` config file that applies settings recursively to a
 - `GIT_AUTH` - Git auth mode override
 - `DEBUG` - Enable debug output
 - `CHROME_PORT` - Chrome DevTools port
+- `MOUNT_ROOT` - Mount directory (relative to config file, or absolute path)
 
-**Coexistence:** `.dclaude` (file) can exist alongside `.dclaude/` (directory used for Chrome profiles).
+**Note:** Chrome profiles are stored in `.dclaude.d/` directory, keeping `.dclaude` available for the config file.
 
 ### Namespace Isolation
 
@@ -164,6 +165,51 @@ Namespaces provide complete isolation of credentials, settings, and containers.
 **SSH proxy naming (macOS):**
 - Default: `dclaude-ssh-proxy-{uid}`, volume `dclaude-ssh-proxy`
 - With namespace: `dclaude-{namespace}-ssh-proxy-{uid}`, volume `dclaude-{namespace}-ssh-proxy`
+
+### Mount Root (Parent Directory Access)
+
+By default, dclaude mounts only the current working directory. The `MOUNT_ROOT` option allows mounting a parent directory instead, enabling access to sibling directories.
+
+**Use Case Example:**
+```text
+/Users/alan/projects/gravitylending/
+├── local-reverse-proxy/    # Legacy SSL setup
+├── wf-docker/              # Legacy docker-compose configs
+├── gravity-image/          # Custom Docker images
+└── wf-services/
+    └── titles-service/     # ← Claude's working directory
+```
+
+Without `MOUNT_ROOT`, Claude can only see `titles-service/`. With `MOUNT_ROOT=../..`, Claude can access all sibling directories.
+
+**Configuration:**
+
+Config file (`.dclaude`) - relative paths resolve from config file's directory:
+```bash
+# Mount the directory where .dclaude lives
+MOUNT_ROOT=.
+
+# Mount parent of config file's directory
+MOUNT_ROOT=..
+```
+
+Environment variable - relative paths resolve from working directory:
+```bash
+DCLAUDE_MOUNT_ROOT=.. dclaude                    # Relative to working dir
+DCLAUDE_MOUNT_ROOT=/path/to/parent dclaude       # Absolute path
+```
+
+**Behavior:**
+- `MOUNT_ROOT` specifies which directory to mount in the container
+- Working directory (`-w`) remains the current directory
+- Relative paths are resolved relative to the current directory
+- Validation ensures working directory is within mount root
+
+**Implementation:**
+- Function: `get_mount_root()` in dclaude script
+- Accepts absolute or relative paths
+- Returns resolved absolute path
+- Errors if working directory is not under mount root
 
 ### Claude Code Installation
 
@@ -578,7 +624,7 @@ DCLAUDE_CHROME_PROFILE=testing dclaude chrome
 ### What `dclaude chrome` Does
 
 1. **Auto-detects Chrome** binary (macOS, Linux, Windows supported)
-2. **Creates profile directory** at `.dclaude/chrome/profiles/<profile-name>/`
+2. **Creates profile directory** at `.dclaude.d/chrome/profiles/<profile-name>/`
 3. **Checks/creates `.mcp.json`** with `chrome-devtools-mcp` server configuration
 4. **Validates port consistency** between Chrome launch and `.mcp.json` config
 5. **Launches Chrome** with remote debugging on specified port (default: 9222)
@@ -587,7 +633,7 @@ DCLAUDE_CHROME_PROFILE=testing dclaude chrome
 ### Chrome Launch Flags
 
 **Default flags (always set):**
-- `--user-data-dir=.dclaude/chrome/profiles/<profile>/` - Isolated profile per project
+- `--user-data-dir=.dclaude.d/chrome/profiles/<profile>/` - Isolated profile per project
 - `--remote-debugging-port=<port>` - Enable DevTools Protocol (default: 9222)
 - `--no-first-run` - Skip first-run wizard
 - `--no-default-browser-check` - Don't ask to be default browser
@@ -629,7 +675,8 @@ This ensures you're aware of configuration mismatches without blocking Chrome fr
 ```
 project-root/
 ├── .mcp.json                    # MCP server configuration
-└── .dclaude/
+├── .dclaude                     # Config file (optional)
+└── .dclaude.d/
     └── chrome/
         └── profiles/
             ├── claude/          # Default profile
