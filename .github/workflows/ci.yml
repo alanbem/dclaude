@@ -129,7 +129,7 @@ jobs:
             VERSION=${{ steps.version.outputs.version }}
 
       - name: Scan for vulnerabilities (console output)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.34.2
         with:
           image-ref: ${{ env.IMAGE_NAME }}:scan
           format: 'table'
@@ -139,7 +139,7 @@ jobs:
           scanners: 'vuln'
 
       - name: Scan for vulnerabilities (SARIF)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.34.2
         with:
           image-ref: ${{ env.IMAGE_NAME }}:scan
           format: 'sarif'
