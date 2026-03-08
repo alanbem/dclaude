@@ -987,6 +987,423 @@ handle_git_auth() {
     fi
 }
 
+# ============================================================================
+# Agent Teams Tmux Passthrough — Relay Functions
+# ============================================================================
+# When the user runs dclaude from inside a host tmux session, these functions
+# set up a TCP relay that forwards Claude Code's tmux commands to the host.
+# This makes Agent Teams sub-agent panes visible in the host's tmux session.
+
+# Check if user is in a host tmux session
+detect_host_tmux() {
+    [[ -n "${TMUX:-}" ]]
+}
+
+# Check if host has required tools for relay (jq + socat or ncat)
+check_relay_deps() {
+    if ! command -v jq &>/dev/null; then
+        debug "Relay dep missing: jq"
+        return 1
+    fi
+    if command -v socat &>/dev/null; then
+        debug "Relay listener: socat"
+        return 0
+    fi
+    if command -v ncat &>/dev/null; then
+        debug "Relay listener: ncat"
+        return 0
+    fi
+    debug "Relay dep missing: socat or ncat"
+    return 1
+}
+
+# Get the address the container uses to reach the host relay
+get_relay_host() {
+    local platform="$1"
+    local network_mode="$2"
+    # Linux host mode: container shares host network, use loopback
+    if [[ "$platform" == "linux" && "$network_mode" == "host" ]]; then
+        echo "127.0.0.1"
+    else
+        # macOS (any mode) or Linux bridge: use Docker's host gateway
+        echo "host.docker.internal"
+    fi
+}
+
+# Get the address the relay binds to on the host
+get_relay_bind_addr() {
+    local platform="$1"
+    local network_mode="$2"
+    # Linux bridge: container reaches host via bridge gateway, not loopback
+    if [[ "$platform" == "linux" && "$network_mode" == "bridge" ]]; then
+        echo "0.0.0.0"
+    else
+        echo "127.0.0.1"
+    fi
+}
+
+# Get or create relay nonce for a container (reused across reattachments)
+get_or_create_relay_nonce() {
+    local container_name="$1"
+    local nonce_file="$HOME/.dclaude/tmux-relay-nonce-${container_name}"
+
+    mkdir -p "$HOME/.dclaude"
+
+    if [[ -f "$nonce_file" ]]; then
+        cat "$nonce_file"
+        return 0
+    fi
+
+    local nonce
+    nonce=$(head -c 32 /dev/urandom | base64 | tr -d '=/+' | head -c 32)
+    echo "$nonce" > "$nonce_file"
+    echo "$nonce"
+}
+
+# Generate the relay handler script (executed by socat/ncat for each connection)
+# Uses a non-quoted heredoc for baked-in values, then a single-quoted heredoc for logic
+generate_relay_handler() {
+    local container_name="$1"
+    local relay_port="$2"
+    local nonce="$3"
+    local handler_path="$4"
+    local tracking_file="$5"
+    local relay_host="$6"
+
+    # Header with baked-in values (variable expansion)
+    cat > "$handler_path" <<HANDLER_HEADER
+#!/bin/bash
+CONTAINER="$container_name"
+NONCE="$nonce"
+RELAY_PORT="$relay_port"
+RELAY_HOST="$relay_host"
+TRACKING_FILE="$tracking_file"
+HANDLER_HEADER
+
+    # Logic body (single-quoted heredoc — no escaping needed)
+    cat >> "$handler_path" <<'HANDLER_BODY'
+
+# Read one JSON line (max 65536 bytes to prevent memory exhaustion)
+read -r -n 65536 request
+if [[ -z "$request" ]]; then
+    printf '{"code":1,"stdout":"","stderr":"empty request"}\n'
+    exit 1
+fi
+
+# Validate nonce
+req_nonce=$(printf '%s' "$request" | jq -r '.nonce // empty')
+if [[ "$req_nonce" != "$NONCE" ]]; then
+    printf '{"code":1,"stdout":"","stderr":"authentication failed"}\n'
+    exit 1
+fi
+
+# Extract command array (bash 3.2 compatible — no mapfile)
+cmd=()
+while IFS= read -r line; do
+    cmd+=("$line")
+done < <(printf '%s' "$request" | jq -r '.cmd[]')
+subcmd="${cmd[0]}"
+cwd=$(printf '%s' "$request" | jq -r '.cwd // empty')
+req_pane=$(printf '%s' "$request" | jq -r '.pane // empty')
+
+# Allowlist tmux subcommands
+case "$subcmd" in
+    split-window|send-keys|list-panes|select-layout|resize-pane|\
+    select-pane|kill-pane|has-session|list-windows|display-message|list-sessions)
+        ;;
+    *)
+        printf '{"code":1,"stdout":"","stderr":"disallowed: %s"}\n' "$subcmd"
+        exit 1
+        ;;
+esac
+
+# Build tmux args based on subcommand
+args=()
+
+if [[ "$subcmd" == "split-window" ]]; then
+    args+=("split-window")
+
+    # Parse split-window flags, strip -c (handled by docker exec -w)
+    # and strip trailing shell command (replaced by docker exec)
+    i=1
+    while (( i < ${#cmd[@]} )); do
+        case "${cmd[$i]}" in
+            -b|-d|-f|-h|-I|-v|-P|-Z)
+                args+=("${cmd[$i]}")
+                ;;
+            -c)
+                # Capture directory, use for docker exec -w
+                (( i++ ))
+                cwd="${cmd[$i]}"
+                ;;
+            -e|-l|-t|-F)
+                # Flags with a value argument
+                args+=("${cmd[$i]}")
+                (( i++ ))
+                args+=("${cmd[$i]}")
+                ;;
+            -*)
+                # Unknown flag, pass through
+                args+=("${cmd[$i]}")
+                ;;
+            *)
+                # Shell command — skip (replaced by docker exec)
+                break
+                ;;
+        esac
+        (( i++ ))
+    done
+
+    # Validate cwd: absolute path, safe characters only
+    if [[ -n "$cwd" && ! "$cwd" =~ ^[a-zA-Z0-9/._-]+$ ]]; then
+        printf '{"code":1,"stdout":"","stderr":"invalid cwd"}\n'
+        exit 1
+    fi
+
+    # Append docker exec as the pane command (no sh -c, args as array)
+    args+=(
+        "--"
+        "docker" "exec" "-it"
+        "-e" "DCLAUDE_TMUX_RELAY_PORT=$RELAY_PORT"
+        "-e" "DCLAUDE_TMUX_RELAY_HOST=$RELAY_HOST"
+        "-e" "DCLAUDE_TMUX_RELAY_NONCE=$NONCE"
+        "-e" "DCLAUDE_CONTAINER=$CONTAINER"
+        "-u" "claude"
+        "-w" "${cwd:-/home/claude}"
+        "$CONTAINER"
+        "bash"
+    )
+
+elif [[ "$subcmd" == "send-keys" ]]; then
+    args+=("send-keys")
+
+    # Validate target pane is one we created
+    for (( i=1; i < ${#cmd[@]}; i++ )); do
+        if [[ "${cmd[$i]}" == "-t" && $(( i + 1 )) -lt ${#cmd[@]} ]]; then
+            target="${cmd[$(( i + 1 ))]}"
+            if [[ -f "$TRACKING_FILE" ]] && ! grep -qxF "$target" "$TRACKING_FILE"; then
+                printf '{"code":1,"stdout":"","stderr":"pane not tracked: %s"}\n' "$target"
+                exit 1
+            fi
+            break
+        fi
+    done
+
+    # Pass through all args
+    for (( i=1; i < ${#cmd[@]}; i++ )); do
+        args+=("${cmd[$i]}")
+    done
+
+elif [[ "$subcmd" == "kill-pane" ]]; then
+    args+=("kill-pane")
+    for (( i=1; i < ${#cmd[@]}; i++ )); do
+        args+=("${cmd[$i]}")
+    done
+else
+    # All other allowed commands: pass through args
+    # Inject -t $req_pane for commands that need pane context
+    # (relay runs outside tmux pane context, so tmux needs explicit targeting)
+    args+=("$subcmd")
+    has_target=false
+    for (( i=1; i < ${#cmd[@]}; i++ )); do
+        [[ "${cmd[$i]}" == "-t" ]] && has_target=true
+        [[ "${cmd[$i]}" =~ ^-t.+ ]] && has_target=true
+    done
+    # Only inject -t for commands that accept it (not list-sessions, has-session)
+    case "$subcmd" in
+        display-message|list-panes|list-windows|select-layout|resize-pane|select-pane)
+            if [[ "$has_target" == "false" && -n "$req_pane" ]]; then
+                args+=("-t" "$req_pane")
+            fi
+            ;;
+    esac
+    for (( i=1; i < ${#cmd[@]}; i++ )); do
+        args+=("${cmd[$i]}")
+    done
+fi
+
+# Execute tmux command, capture output
+stdout_file=$(mktemp)
+stderr_file=$(mktemp)
+tmux "${args[@]}" >"$stdout_file" 2>"$stderr_file"
+code=$?
+stdout=$(cat "$stdout_file")
+stderr=$(cat "$stderr_file")
+rm -f "$stdout_file" "$stderr_file"
+
+# Post-processing for split-window: track new pane ID
+if [[ "$subcmd" == "split-window" && $code -eq 0 ]]; then
+    pane_id=$(echo "$stdout" | head -1 | tr -d '[:space:]')
+    if [[ "$pane_id" =~ ^%[0-9]+$ ]]; then
+        echo "$pane_id" >> "$TRACKING_FILE"
+    fi
+fi
+
+# Post-processing for kill-pane: clean up orphaned processes after delay
+if [[ "$subcmd" == "kill-pane" && $code -eq 0 ]]; then
+    (
+        sleep 2
+        docker exec "$CONTAINER" bash -c '
+            ps -eo pid,ppid,tty,comm --no-headers 2>/dev/null | while read pid ppid tty comm; do
+                [[ "$ppid" == "0" && "$comm" == "bash" ]] || continue
+                [[ "$tty" =~ ^pts/([0-9]+)$ ]] || continue
+                (( ${BASH_REMATCH[1]} >= 2 )) || continue
+                children=$(ps --ppid "$pid" --no-headers 2>/dev/null | wc -l)
+                if [[ "$children" -eq 0 ]]; then
+                    kill -9 "$pid" 2>/dev/null
+                fi
+            done
+        '
+    ) &>/dev/null &
+fi
+
+# Return JSON response
+jq -nc --arg code "$code" --arg stdout "$stdout" --arg stderr "$stderr" \
+    '{code: ($code | tonumber), stdout: $stdout, stderr: $stderr}'
+HANDLER_BODY
+}
+
+# Start the relay listener on the host
+start_relay() {
+    local container_name="$1"
+    local relay_port="$2"
+    local nonce="$3"
+    local bind_addr="$4"
+    local relay_host="$5"
+
+    local handler_path="$HOME/.dclaude/tmux-relay-handler-${container_name}.sh"
+    local pid_file="$HOME/.dclaude/tmux-relay-pid-${container_name}"
+    local tracking_file="$HOME/.dclaude/tmux-relay-panes-${container_name}"
+
+    mkdir -p "$HOME/.dclaude"
+
+    # Generate handler script
+    generate_relay_handler "$container_name" "$relay_port" "$nonce" \
+        "$handler_path" "$tracking_file" "$relay_host"
+    chmod +x "$handler_path"
+
+    # Clear pane tracking
+    > "$tracking_file"
+
+    # Start listener
+    if command -v socat &>/dev/null; then
+        debug "Starting socat relay on $bind_addr:$relay_port"
+        socat "TCP-LISTEN:$relay_port,bind=$bind_addr,reuseaddr,fork,max-children=10" \
+            "EXEC:bash $handler_path" &
+    elif command -v ncat &>/dev/null; then
+        debug "Starting ncat relay on $bind_addr:$relay_port"
+        ncat -l -k "$bind_addr" "$relay_port" --sh-exec "$handler_path" &
+    else
+        error "No relay listener available (need socat or ncat)"
+        return 1
+    fi
+
+    echo $! > "$pid_file"
+    debug "Relay PID: $(cat "$pid_file")"
+}
+
+# Stop the relay and clean up
+stop_relay() {
+    local container_name="$1"
+
+    local pid_file="$HOME/.dclaude/tmux-relay-pid-${container_name}"
+    local handler_path="$HOME/.dclaude/tmux-relay-handler-${container_name}.sh"
+    local tracking_file="$HOME/.dclaude/tmux-relay-panes-${container_name}"
+
+    if [[ -f "$pid_file" ]]; then
+        local pid
+        pid=$(cat "$pid_file")
+        if [[ -n "$pid" ]]; then
+            # Kill forked handler processes first
+            pkill -P "$pid" 2>/dev/null || true
+            # Verify process identity before killing (guard against PID recycling)
+            local comm
+            comm=$(ps -p "$pid" -o comm= 2>/dev/null || true)
+            if [[ "$comm" =~ (socat|ncat) ]]; then
+                kill "$pid" 2>/dev/null || true
+            fi
+        fi
+    fi
+
+    # Clean up orphaned bash processes in container
+    cleanup_container_orphans "$container_name"
+
+    # Remove relay files (but keep nonce for reattachment)
+    rm -f "$pid_file" "$handler_path" "$tracking_file"
+}
+
+# Kill orphaned bash sessions in container (from dead docker exec panes)
+cleanup_container_orphans() {
+    local container_name="$1"
+
+    # Check container is running before trying
+    if ! docker ps -q -f name="^${container_name}$" 2>/dev/null | grep -q .; then
+        return 0
+    fi
+
+    docker exec "$container_name" bash -c '
+        ps -eo pid,ppid,tty,comm --no-headers 2>/dev/null | while read pid ppid tty comm; do
+            [[ "$ppid" == "0" && "$comm" == "bash" ]] || continue
+            [[ "$tty" =~ ^pts/([0-9]+)$ ]] || continue
+            (( ${BASH_REMATCH[1]} >= 2 )) || continue
+            children=$(ps --ppid "$pid" --no-headers 2>/dev/null | wc -l)
+            if [[ "$children" -eq 0 ]]; then
+                kill -9 "$pid" 2>/dev/null
+            fi
+        done
+    ' 2>/dev/null || true
+}
+
+# Set up Agent Teams relay if conditions are met
+# Sets globals: RELAY_STARTED, TMUX_SESSION_ENV_ARGS
+setup_agent_teams_relay() {
+    local container_name="$1"
+    local relay_port="$2"
+    local platform="$3"
+    local network_mode="$4"
+
+    RELAY_STARTED=false
+    TMUX_SESSION_ENV_ARGS=()
+
+    if [[ -z "$relay_port" ]]; then
+        debug "No relay port configured for this container"
+        TMUX_SESSION_ENV_ARGS=(-e "DCLAUDE_HIDE_TMUX=1")
+        return
+    fi
+
+    if ! detect_host_tmux; then
+        debug "Not in host tmux - Agent Teams will use in-process mode"
+        TMUX_SESSION_ENV_ARGS=(-e "DCLAUDE_HIDE_TMUX=1")
+        return
+    fi
+
+    if ! check_relay_deps; then
+        info "Tip: Install jq + socat (or ncat) for Agent Teams pane mode in tmux"
+        TMUX_SESSION_ENV_ARGS=(-e "DCLAUDE_HIDE_TMUX=1")
+        return
+    fi
+
+    local bind_addr relay_host relay_nonce host_pane
+    bind_addr=$(get_relay_bind_addr "$platform" "$network_mode")
+    relay_host=$(get_relay_host "$platform" "$network_mode")
+    relay_nonce=$(get_or_create_relay_nonce "$container_name")
+    host_pane=$(tmux display-message -p '#{pane_id}')
+
+    start_relay "$container_name" "$relay_port" "$relay_nonce" "$bind_addr" "$relay_host"
+    RELAY_STARTED=true
+
+    TMUX_SESSION_ENV_ARGS=(
+        -e "DCLAUDE_TMUX_RELAY_PORT=$relay_port"
+        -e "DCLAUDE_TMUX_RELAY_HOST=$relay_host"
+        -e "DCLAUDE_TMUX_RELAY_NONCE=$relay_nonce"
+        -e "DCLAUDE_HOST_PANE=$host_pane"
+        -e "DCLAUDE_CONTAINER=$container_name"
+    )
+
+    debug "Agent Teams relay: $bind_addr:$relay_port -> $container_name (pane $host_pane)"
+}
+# ============================================================================
+
 # Detect TTY availability and return appropriate Docker flags
 # Detect TTY status early (before any subshells)
 # Must be done at script top-level since $() subshells don't inherit TTY
@@ -1031,6 +1448,17 @@ should_skip_tmux() {
     return 1
 }
 
+# Debug countdown before launching Claude (gives time to read debug output)
+# Press Enter to skip the countdown and launch immediately
+debug_countdown() {
+    if [[ "$DEBUG" == "true" ]]; then
+        for i in 5 4 3 2 1; do
+            printf '\r%b' "${CYAN}Debug: Launching in ${i}... (press Enter to skip)${NC}" >&2
+            read -t 1 -s 2>/dev/null && break
+        done
+        printf '\r%b\n' "${CYAN}Debug: Launching...                               ${NC}" >&2
+    fi
+}
 
 # Main execution
 main() {
@@ -1244,10 +1672,23 @@ main() {
                 [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
                 [[ -n "${DCLAUDE_ITERM2:-}" ]] && exec_env_args+=(-e "DCLAUDE_ITERM2=${DCLAUDE_ITERM2}")
 
+                # Set up Agent Teams relay (or hide $TMUX for in-process mode)
+                local relay_port
+                relay_port=$(docker inspect --format='{{index .Config.Labels "dclaude.relay.port"}}' "$container_name" 2>/dev/null || true)
+                setup_agent_teams_relay "$container_name" "$relay_port" "$platform" "$network_mode"
+                if [[ "$RELAY_STARTED" == "true" ]]; then
+                    trap "stop_relay '$container_name'" EXIT
+                fi
+
                 debug "Creating new tmux session running Claude"
                 debug "Claude args count: ${#claude_args[@]}, user args: $*"
                 info "Starting new Claude session..."
-                docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
+                debug_countdown
+                docker exec -it -u claude "${exec_env_args[@]}" "$container_name" \
+                    /usr/bin/tmux -L dclaude-inner -f /home/claude/.tmux.conf \
+                    new-session -s "$tmux_session" \
+                    "${TMUX_SESSION_ENV_ARGS[@]}" \
+                    claude-launcher.sh "${claude_args[@]}" "$@"
                 exit $?
             else
                 # Non-interactive or print mode - run claude directly without tmux
@@ -1297,6 +1738,17 @@ main() {
     ssh_port=$(find_available_port 2222 65000)
     debug "SSH port reserved: $ssh_port"
     DOCKER_ARGS+=(--label "dclaude.ssh.port=${ssh_port}")
+
+    # Reserve relay port for Agent Teams tmux passthrough
+    local relay_port
+    relay_port=$(find_available_port 30000 60000)
+    debug "Relay port reserved: $relay_port"
+    DOCKER_ARGS+=(--label "dclaude.relay.port=${relay_port}")
+
+    # Add host.docker.internal for Linux bridge mode (needed for relay connectivity)
+    if [[ "$platform" == "linux" && "$network_mode" == "bridge" ]]; then
+        DOCKER_ARGS+=(--add-host "host.docker.internal:host-gateway")
+    fi
 
     # Port mapping only needed for bridge mode (host mode shares network stack)
     if [[ "$network_mode" != "host" ]]; then
@@ -1397,10 +1849,21 @@ main() {
             [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
             [[ -n "${DCLAUDE_ITERM2:-}" ]] && exec_env_args+=(-e "DCLAUDE_ITERM2=${DCLAUDE_ITERM2}")
 
+            # Set up Agent Teams relay (or hide $TMUX for in-process mode)
+            setup_agent_teams_relay "$container_name" "$relay_port" "$platform" "$network_mode"
+            if [[ "$RELAY_STARTED" == "true" ]]; then
+                trap "stop_relay '$container_name'" EXIT
+            fi
+
             debug "Creating new tmux session running Claude"
             debug "Claude args count: ${#claude_args[@]}, user args: $*"
             info "Starting new Claude session..."
-            docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf new-session -s "$tmux_session" claude "${claude_args[@]}" "$@"
+            debug_countdown
+            docker exec -it -u claude "${exec_env_args[@]}" "$container_name" \
+                /usr/bin/tmux -L dclaude-inner -f /home/claude/.tmux.conf \
+                new-session -s "$tmux_session" \
+                "${TMUX_SESSION_ENV_ARGS[@]}" \
+                claude-launcher.sh "${claude_args[@]}" "$@"
             exit $?
         else
             # Non-interactive or print mode - run claude directly without tmux
@@ -1530,11 +1993,11 @@ cmd_attach() {
         fi
     fi
 
-    # Check if session exists
-    if ! docker exec -u claude "$container_name" tmux has-session -t "$session_name" 2>/dev/null; then
+    # Check if session exists (use -L dclaude-inner for namespaced socket)
+    if ! docker exec -u claude "$container_name" /usr/bin/tmux -L dclaude-inner has-session -t "$session_name" 2>/dev/null; then
         error "Session '$session_name' not found in container"
         info "Available sessions:"
-        docker exec -u claude "$container_name" tmux list-sessions 2>/dev/null || echo "  (no sessions running)"
+        docker exec -u claude "$container_name" /usr/bin/tmux -L dclaude-inner list-sessions 2>/dev/null || echo "  (no sessions running)"
         exit 1
     fi
 
@@ -1546,9 +2009,22 @@ cmd_attach() {
     [[ -n "${COLORTERM:-}" ]] && exec_env_args+=(-e "COLORTERM=${COLORTERM}")
     [[ -n "${DCLAUDE_ITERM2:-}" ]] && exec_env_args+=(-e "DCLAUDE_ITERM2=${DCLAUDE_ITERM2}")
 
+    # Restart relay if the session uses it (relay was stopped when previous dclaude exited)
+    local relay_port
+    relay_port=$(docker inspect --format='{{index .Config.Labels "dclaude.relay.port"}}' "$container_name" 2>/dev/null || true)
+    local platform
+    platform=$(detect_platform)
+    local network_mode
+    network_mode=$(docker inspect --format='{{.HostConfig.NetworkMode}}' "$container_name" 2>/dev/null || echo "bridge")
+    setup_agent_teams_relay "$container_name" "$relay_port" "$platform" "$network_mode"
+    if [[ "$RELAY_STARTED" == "true" ]]; then
+        trap "stop_relay '$container_name'" EXIT
+    fi
+
     # Attach to existing session
     info "Attaching to session: $session_name"
-    docker exec -it -u claude "${exec_env_args[@]}" "$container_name" tmux -f /home/claude/.tmux.conf attach-session -t "$session_name"
+    docker exec -it -u claude "${exec_env_args[@]}" "$container_name" \
+        /usr/bin/tmux -L dclaude-inner -f /home/claude/.tmux.conf attach-session -t "$session_name"
     exit $?
 }
 
@@ -1770,13 +2246,16 @@ cmd_stop() {
     if [[ "$container_status" == "running" ]]; then
         # Count active tmux sessions
         local session_count
-        session_count=$(docker exec -u claude "$container_name" tmux list-sessions 2>/dev/null | wc -l | tr -d '[:space:]') || session_count=0
+        session_count=$(docker exec -u claude "$container_name" /usr/bin/tmux -L dclaude-inner list-sessions 2>/dev/null | wc -l | tr -d '[:space:]') || session_count=0
 
         if [[ "$session_count" =~ ^[0-9]+$ ]] && [[ "$session_count" -gt 0 ]]; then
             info "Stopping container $container_name ($session_count active session(s))..."
         else
             info "Stopping container $container_name..."
         fi
+
+        # Stop relay if running
+        stop_relay "$container_name"
 
         if docker stop "$container_name" >/dev/null; then
             success "Container stopped"
@@ -1956,13 +2435,17 @@ cmd_rm() {
         if [[ "$force" == "true" ]]; then
             # Count active tmux sessions
             local session_count
-            session_count=$(docker exec -u claude "$container_name" tmux list-sessions 2>/dev/null | wc -l | tr -d '[:space:]') || session_count=0
+            session_count=$(docker exec -u claude "$container_name" /usr/bin/tmux -L dclaude-inner list-sessions 2>/dev/null | wc -l | tr -d '[:space:]') || session_count=0
 
             if [[ "$session_count" =~ ^[0-9]+$ ]] && [[ "$session_count" -gt 0 ]]; then
                 info "Removing running container $container_name ($session_count active session(s))..."
             else
                 info "Removing running container $container_name..."
             fi
+
+            # Clean up relay (including nonce file since container is being removed)
+            stop_relay "$container_name"
+            rm -f "$HOME/.dclaude/tmux-relay-nonce-${container_name}"
 
             if docker rm -f "$container_name" >/dev/null; then
                 success "Container removed"
@@ -1978,6 +2461,11 @@ cmd_rm() {
         fi
     else
         info "Removing container $container_name..."
+
+        # Clean up relay files (including nonce since container is being removed)
+        stop_relay "$container_name"
+        rm -f "$HOME/.dclaude/tmux-relay-nonce-${container_name}"
+
         if docker rm "$container_name" >/dev/null; then
             success "Container removed"
         else

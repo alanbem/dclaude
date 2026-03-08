@@ -156,6 +156,15 @@ COPY --chown=claude:claude home/claude/.tmux.conf /home/claude/.tmux.conf
 COPY --chown=claude:claude home/claude/.iterm2_shell_integration.bash /home/claude/.iterm2_shell_integration.bash
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# Agent Teams tmux passthrough scripts
+# claude-launcher.sh: session command that controls $TMUX visibility
+# tmux-wrapper.sh: installed as /usr/local/bin/tmux to intercept Claude Code's tmux calls
+#   /usr/local/bin is before /usr/bin in PATH, so this wrapper is found first
+#   It relays commands to the host when relay is configured, or passes through to /usr/bin/tmux
+COPY --chown=claude:claude usr/local/bin/claude-launcher.sh /usr/local/bin/claude-launcher.sh
+COPY --chown=claude:claude usr/local/bin/tmux-wrapper.sh /usr/local/bin/tmux
+RUN chmod +x /usr/local/bin/claude-launcher.sh /usr/local/bin/tmux
+
 # Set working directory to workspace
 WORKDIR /home/claude/workspace
 
