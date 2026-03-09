@@ -58,3 +58,6 @@ compass_artifact_*.md
 
 # Ephemeral artifacts (test results, one-time docs, intermediary outputs)
 artifacts/
+
+# Local plans
+PLAN.md

@@ -982,6 +982,8 @@ DCLAUDE_DEBUG=true dclaude    # Enable debug output
 make verify                    # Run installation verification
 ```
 
+**Note:** Debug output is only visible briefly before tmux takes over the terminal. The full debug output becomes visible again after exiting dclaude (when tmux releases the screen). You cannot read debug messages while dclaude is running interactively.
+
 ### User Shortcuts
 
 When the user asks to "kill dclaudes" or "kill dclaude instances":
