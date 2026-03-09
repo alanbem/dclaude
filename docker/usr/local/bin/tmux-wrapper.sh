@@ -24,27 +24,12 @@ RELAY_HOST="${DCLAUDE_TMUX_RELAY_HOST:-host.docker.internal}"
 RELAY_PORT="$DCLAUDE_TMUX_RELAY_PORT"
 RELAY_NONCE="${DCLAUDE_TMUX_RELAY_NONCE:-}"
 
-# Build args array with pane ID translation
-# Translates dclaude-inner pane IDs to host pane IDs in -t arguments
-args=()
-prev_was_t=false
-for arg in "$@"; do
-    if $prev_was_t; then
-        # -t VALUE (separate arguments)
-        if [[ "$arg" == "${TMUX_PANE:-}" && -n "${DCLAUDE_HOST_PANE:-}" ]]; then
-            arg="$DCLAUDE_HOST_PANE"
-        fi
-        prev_was_t=false
-    elif [[ "$arg" =~ ^-t(.+)$ ]]; then
-        # -tVALUE (combined form)
-        pane="${BASH_REMATCH[1]}"
-        if [[ "$pane" == "${TMUX_PANE:-}" && -n "${DCLAUDE_HOST_PANE:-}" ]]; then
-            arg="-t${DCLAUDE_HOST_PANE}"
-        fi
-    fi
-    args+=("$arg")
-    [[ "$arg" == "-t" ]] && prev_was_t=true
-done
+# Pass args through as-is — no pane ID translation needed.
+# Claude Code's teammate pane IDs are already host-side IDs (returned by
+# the relay's split-window response). The relay handler injects -t for
+# commands that need pane context (display-message, list-panes, etc.)
+# via the JSON "pane" field.
+args=("$@")
 
 # Build JSON request using jq (--args treats trailing arguments as strings)
 if [[ ${#args[@]} -gt 0 ]]; then

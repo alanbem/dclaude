@@ -13,4 +13,10 @@ if [[ "${DCLAUDE_HIDE_TMUX:-}" == "1" ]]; then
     unset TMUX_PANE
 fi
 
+# When relay is configured, Claude Code's auto detection can't probe tmux
+# through the wrapper, so we explicitly set tmux pane mode
+if [[ -n "${DCLAUDE_TMUX_RELAY_PORT:-}" ]]; then
+    exec claude --teammate-mode tmux "$@"
+fi
+
 exec claude "$@"

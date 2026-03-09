@@ -1289,7 +1289,7 @@ start_relay() {
     if command -v socat &>/dev/null; then
         debug "Starting socat relay on $bind_addr:$relay_port"
         socat "TCP-LISTEN:$relay_port,bind=$bind_addr,reuseaddr,fork,max-children=10" \
-            "EXEC:bash $handler_path" &
+            "EXEC:bash $handler_path" 2>/dev/null &
     elif command -v ncat &>/dev/null; then
         debug "Starting ncat relay on $bind_addr:$relay_port"
         ncat -l -k "$bind_addr" "$relay_port" --sh-exec "$handler_path" &
