@@ -1573,6 +1573,14 @@ main() {
         debug "Git auth: $resolved_git_auth (user-specified)"
     fi
 
+    # Warn if agent-forwarding is active but no keys are loaded
+    if [[ "$resolved_git_auth" == "agent-forwarding" ]]; then
+        if ! ssh-add -l >/dev/null 2>&1; then
+            warning "SSH agent has no keys loaded — SSH won't work inside container."
+            warning "Run 'dclaude ssh --load' to load your keys."
+        fi
+    fi
+
     # Generate system context for Claude (if enabled) - must be done early for all code paths
     local claude_args=()
     if [[ "$ENABLE_SYSTEM_CONTEXT" == "true" ]]; then
@@ -2280,6 +2288,10 @@ cmd_ssh() {
                 action="stop"
                 shift
                 ;;
+            --load)
+                action="load"
+                shift
+                ;;
             --help|-h)
                 cat << 'SSH_HELP'
 dclaude ssh - SSH Server for Remote Access
@@ -2287,6 +2299,7 @@ dclaude ssh - SSH Server for Remote Access
 Usage:
   dclaude ssh              Start SSH server and show connection info
   dclaude ssh --stop       Stop SSH server
+  dclaude ssh --load       Load SSH keys into agent
 
 Connection:
   ssh claude@localhost -p <port>
@@ -2313,11 +2326,57 @@ SSH_HELP
                 ;;
             *)
                 error "Unknown option: $1"
-                info "Usage: dclaude ssh [--stop]"
+                info "Usage: dclaude ssh [--stop | --load]"
                 exit 1
                 ;;
         esac
     done
+
+    # Handle --load (host-side only, no container needed)
+    if [[ "$action" == "load" ]]; then
+        local ssh_dir="${HOME}/.ssh"
+        if [[ ! -d "$ssh_dir" ]]; then
+            error "No ~/.ssh directory found"
+            exit 1
+        fi
+
+        # Detect private key files
+        local keys=()
+        for key_file in "$ssh_dir"/id_*; do
+            [[ -f "$key_file" ]] || continue
+            # Skip public keys and certificates
+            [[ "$key_file" == *.pub ]] && continue
+            [[ "$key_file" == *-cert.pub ]] && continue
+            keys+=("$key_file")
+        done
+
+        if [[ ${#keys[@]} -eq 0 ]]; then
+            warning "No SSH keys found in ~/.ssh/"
+            info "Generate a key with: ssh-keygen -t ed25519"
+            exit 1
+        fi
+
+        info "Loading SSH keys..."
+        local loaded=0
+        for key_file in "${keys[@]}"; do
+            local display_path="~/.ssh/$(basename "$key_file")"
+            if ssh-add "$key_file" 2>/dev/null; then
+                success "  $display_path"
+                ((loaded++))
+            else
+                warning "  $display_path (failed — wrong passphrase or unsupported key)"
+            fi
+        done
+
+        echo ""
+        if [[ $loaded -gt 0 ]]; then
+            success "$loaded key(s) loaded into SSH agent."
+        else
+            error "No keys were loaded"
+            exit 1
+        fi
+        exit 0
+    fi
 
     local container_name=$(get_container_name "$HOST_PATH")
 
@@ -2629,6 +2688,7 @@ Usage:
   dclaude stop                Stop container for current directory
   dclaude rm [-f]             Remove container for current directory
   dclaude ssh                 Start SSH server for remote access
+  dclaude ssh --load          Load SSH keys into agent
   dclaude git                 Configure git identity (name/email)
   dclaude chrome [options]    Launch Chrome with DevTools and MCP integration
   dclaude gh                  Authenticate GitHub CLI (runs gh auth login)
@@ -2696,6 +2756,7 @@ Examples:
   # SSH server for remote access (JetBrains Gateway, VS Code Remote, etc.)
   dclaude ssh                                  # Start SSH server, show connection info
   dclaude ssh --stop                           # Stop SSH server
+  dclaude ssh --load                           # Load SSH keys into agent
 
   # Launch Chrome with DevTools for MCP integration
   dclaude chrome
