@@ -2299,7 +2299,7 @@ dclaude ssh - SSH Server for Remote Access
 Usage:
   dclaude ssh              Start SSH server and show connection info
   dclaude ssh --stop       Stop SSH server
-  dclaude ssh --load       Load SSH keys into agent
+  dclaude ssh --load       Load SSH keys into agent, then start SSH server
 
 Connection:
   ssh claude@localhost -p <port>
@@ -2332,7 +2332,7 @@ SSH_HELP
         esac
     done
 
-    # Handle --load (host-side only, no container needed)
+    # Handle --load: load SSH keys into agent, then fall through to start SSH server
     if [[ "$action" == "load" ]]; then
         local ssh_dir="${HOME}/.ssh"
         if [[ ! -d "$ssh_dir" ]]; then
@@ -2375,7 +2375,10 @@ SSH_HELP
             error "No keys were loaded"
             exit 1
         fi
-        exit 0
+
+        # Reset action so we fall through to default SSH server behavior
+        action=""
+        echo ""
     fi
 
     local container_name=$(get_container_name "$HOST_PATH")
@@ -2688,7 +2691,7 @@ Usage:
   dclaude stop                Stop container for current directory
   dclaude rm [-f]             Remove container for current directory
   dclaude ssh                 Start SSH server for remote access
-  dclaude ssh --load          Load SSH keys into agent
+  dclaude ssh --load          Load SSH keys into agent, then start SSH server
   dclaude git                 Configure git identity (name/email)
   dclaude chrome [options]    Launch Chrome with DevTools and MCP integration
   dclaude gh                  Authenticate GitHub CLI (runs gh auth login)
@@ -2756,7 +2759,7 @@ Examples:
   # SSH server for remote access (JetBrains Gateway, VS Code Remote, etc.)
   dclaude ssh                                  # Start SSH server, show connection info
   dclaude ssh --stop                           # Stop SSH server
-  dclaude ssh --load                           # Load SSH keys into agent
+  dclaude ssh --load                           # Load keys + start SSH server
 
   # Launch Chrome with DevTools for MCP integration
   dclaude chrome
