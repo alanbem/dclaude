@@ -767,35 +767,56 @@ dclaude
 - Protocol: Chrome DevTools Protocol (CDP)
 - Connection: `--browserUrl=http://localhost:9222`
 
-## SSH Server for Remote Access
+## SSH Key and Server Management
 
-The `dclaude ssh` command provides SSH access to the container for remote development tools like JetBrains Gateway, VS Code Remote SSH, or direct SSH connections.
+The `dclaude ssh` command manages SSH keys and the SSH server for remote development tools like JetBrains Gateway, VS Code Remote SSH, or direct SSH connections.
 
 ### Usage
 
 ```bash
-# Start container (SSH port automatically reserved)
-dclaude
-
-# Start SSH server and show connection info
+# Load SSH keys into agent and start SSH server
 dclaude ssh
 
+# Load SSH keys into agent only
+dclaude ssh keys
+
+# Start SSH server and show connection info
+dclaude ssh server
+
 # Stop SSH server
-dclaude ssh --stop
+dclaude ssh server --stop
 ```
+
+### SSH Key Loading
+
+When git auth is `agent-forwarding`, dclaude warns at startup if no SSH keys are loaded. Use `dclaude ssh keys` to load keys:
+
+```bash
+$ dclaude ssh keys
+
+Loading SSH keys...
+  ✓ ~/.ssh/id_ed25519
+  ✓ ~/.ssh/id_rsa
+
+2 keys loaded into SSH agent.
+```
+
+- Detects private keys in `~/.ssh/` (id_rsa, id_ed25519, etc.)
+- Runs `ssh-add` for each key (may prompt for passphrase)
+- Host-side only — no container needed
 
 ### Connection
 
 ```bash
 ssh claude@localhost -p <port>
 # Password: claude
-# Port is shown when running 'dclaude ssh'
+# Port is shown when running 'dclaude ssh server'
 ```
 
 ### How It Works
 
 1. When container is created, a random available port is reserved and stored in a container label
-2. `dclaude ssh` reads the port from the label and starts sshd on that port
+2. `dclaude ssh server` reads the port from the label and starts sshd on that port
 3. Port is mapped identically on host and container (e.g., `34567:34567`)
 4. Works with both host and bridge networking modes
 
@@ -803,7 +824,7 @@ ssh claude@localhost -p <port>
 
 **JetBrains Gateway (PhpStorm, IntelliJ, WebStorm, PyCharm, etc.):**
 1. Start container: `dclaude`
-2. Start SSH server: `dclaude ssh` (note the port shown)
+2. Start SSH server: `dclaude ssh server` (note the port shown)
 3. Open JetBrains Gateway → New Connection → SSH
 4. Connect to `localhost:<port>` with username `claude`, password `claude`
 5. Gateway automatically downloads and deploys IDE backend into the container
@@ -811,7 +832,7 @@ ssh claude@localhost -p <port>
 
 **VS Code Remote SSH:**
 1. Start container: `dclaude`
-2. Start SSH server: `dclaude ssh` (note the port shown)
+2. Start SSH server: `dclaude ssh server` (note the port shown)
 3. In VS Code: Remote-SSH → Connect to Host → `claude@localhost:<port>`
 
 **Direct SSH/SFTP:**
@@ -823,14 +844,14 @@ ssh claude@localhost -p <port>
 **SSH configuration:**
 - Password authentication enabled (username: `claude`, password: `claude`)
 - SFTP subsystem enabled for file transfer
-- Host keys generated on first `dclaude ssh` invocation
+- Host keys generated on first `dclaude ssh server` invocation
 - sshd listens on the dynamically assigned port (not port 22)
 
 **Port allocation:**
 - Random available port selected at container creation (range: 2222-65000)
 - Port stored in container label `dclaude.ssh.port`
 - Same port used on both host and container sides
-- SSH server only runs when started with `dclaude ssh`
+- SSH server only runs when started with `dclaude ssh server`
 
 ### Security Note
 
