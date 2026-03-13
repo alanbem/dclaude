@@ -836,7 +836,7 @@ Uses `aws login` (not `aws sso login`) — this is the more universal command th
 ### Technical Implementation
 
 **Config precedence:**
-```
+```text
 DCLAUDE_AWS_CLI env var > AWS_CLI in .dclaude file > auto-detect
 ```
 
@@ -853,8 +853,10 @@ DCLAUDE_AWS_CLI env var > AWS_CLI in .dclaude file > auto-detect
 
 **Entrypoint (docker-entrypoint.sh):**
 ```bash
-# Fix .aws volume ownership (same pattern as .claude volume)
-chown -R claude:claude /home/claude/.aws 2>/dev/null || true
+# Fix .aws volume ownership (volume mode only — skip for mount mode to avoid changing host files)
+if [ "$DCLAUDE_AWS_CLI_MODE" = "volume" ] && [ -d "/home/claude/.aws" ]; then
+    chown -R claude:claude /home/claude/.aws 2>/dev/null || true
+fi
 ```
 
 **System context:** `generate_system_context()` includes AWS CLI mode info so Claude knows whether credentials are available.

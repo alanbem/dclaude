@@ -2772,8 +2772,12 @@ cmd_aws_login() {
     local container_name="$1"
     shift
 
+    local tty_flags
+    tty_flags=$(detect_tty_flags)
+
     info "Starting AWS login..."
-    exec docker exec -it -u claude "$container_name" aws login "$@"
+    # shellcheck disable=SC2086
+    exec docker exec $tty_flags -u claude "$container_name" aws login "$@"
 }
 
 cmd_aws() {
