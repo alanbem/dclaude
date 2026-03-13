@@ -132,12 +132,15 @@ dclaude gh                        # Interactive GitHub login
 dclaude exec gh pr list           # Use gh commands
 ```
 
-### SSH Server for IDEs
+### SSH Key and Server Management
 
-Connect JetBrains Gateway, VS Code Remote, or any SSH client:
+Load SSH keys and start SSH server for JetBrains Gateway, VS Code Remote, or any SSH client:
 
 ```bash
-dclaude ssh                       # Start SSH server, shows port
+dclaude ssh                       # Load keys + start SSH server
+dclaude ssh keys                  # Load SSH keys into agent
+dclaude ssh server                # Start SSH server, shows port
+dclaude ssh server --stop         # Stop SSH server
 # Connect: ssh claude@localhost -p <port>
 # Password: claude
 ```
