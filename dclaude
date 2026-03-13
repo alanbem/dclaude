@@ -1575,7 +1575,9 @@ main() {
 
     # Warn if agent-forwarding is active but no keys are loaded
     if [[ "$resolved_git_auth" == "agent-forwarding" ]]; then
-        if ! ssh-add -l >/dev/null 2>&1; then
+        local ssh_add_rc=0
+        ssh-add -l >/dev/null 2>&1 || ssh_add_rc=$?
+        if [[ $ssh_add_rc -eq 1 ]]; then
             warning "SSH agent has no keys loaded — SSH won't work inside container."
             warning "Run 'dclaude ssh keys' to load your keys."
         fi
@@ -2279,14 +2281,15 @@ cmd_stop() {
 
 # Subcommand: SSH — dispatches to 'keys', 'server', or both
 cmd_ssh() {
+    local rc=0
     case "${1:-}" in
         keys)
             shift
-            cmd_ssh_keys "$@"
+            cmd_ssh_keys "$@" || rc=$?
             ;;
         server)
             shift
-            cmd_ssh_server "$@"
+            cmd_ssh_server "$@" || rc=$?
             ;;
         --help|-h)
             cat << 'SSH_HELP'
@@ -2305,7 +2308,7 @@ SSH_HELP
             # Bare 'dclaude ssh': load keys (non-fatal), then start server
             cmd_ssh_keys "$@" || true
             echo ""
-            cmd_ssh_server "$@"
+            cmd_ssh_server "$@" || rc=$?
             ;;
         *)
             error "Unknown subcommand: $1"
@@ -2313,7 +2316,7 @@ SSH_HELP
             exit 1
             ;;
     esac
-    exit 0
+    exit "$rc"
 }
 
 # Subcommand: SSH key loading
@@ -2370,7 +2373,7 @@ SSH_KEYS_HELP
         local display_path="~/.ssh/$(basename "$key_file")"
         if ssh-add "$key_file" 2>/dev/null; then
             success "  $display_path"
-            ((loaded++))
+            loaded=$((loaded + 1))
         else
             warning "  $display_path (failed — wrong passphrase or unsupported key)"
         fi
