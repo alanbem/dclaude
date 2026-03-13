@@ -23,6 +23,10 @@ if [ "$(id -u)" = "0" ]; then
     if [ -d "/home/claude/.claude" ]; then
         chown -R claude:claude /home/claude/.claude 2>/dev/null || true
     fi
+    # Fix .aws volume ownership to match claude user (volume mode only — skip for mount mode to avoid changing host files)
+    if [ "$DCLAUDE_AWS_CLI_MODE" = "volume" ] && [ -d "/home/claude/.aws" ]; then
+        chown -R claude:claude /home/claude/.aws 2>/dev/null || true
+    fi
 fi
 
 # Fix Docker socket permissions if needed

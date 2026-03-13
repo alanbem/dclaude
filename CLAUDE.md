@@ -8,14 +8,16 @@ AI assistant guidance for working with the dclaude (Dockerized Claude Code) proj
 
 1. **The user is likely running you via dclaude** - you are inside the very container you're modifying
 2. **NEVER run `dclaude stop` or `dclaude rm` on the current directory** - this kills YOUR container and terminates the session
-3. **When testing dclaude commands**, always use a separate test directory:
+3. **ALL dclaude test commands MUST run from a separate test directory** - never from the dclaude project root:
    ```bash
    mkdir -p /tmp/dclaude-test && cd /tmp/dclaude-test
-   # Now safe to test dclaude stop, rm, etc.
+   # Now safe to test dclaude commands
    ```
+   This applies to ALL dclaude invocations: `dclaude`, `./dclaude`, `DCLAUDE_TAG=local ./dclaude`, etc.
+   Container names are path-based, so testing from the project directory conflicts with the active session.
 4. **Check before destructive operations** - if working in the dclaude repo, any container management commands affect YOUR session
 
-**How to detect:** Run `test -f /.dockerenv && echo "dclaude" || echo "host"` - if it prints "dclaude", you're inside the container. If working directory is also the dclaude repository itself, you are dogfooding - exercise extreme caution with container lifecycle commands.
+**How to detect:** Run `test -f /.dockerenv && echo "dclaude" || echo "host"` - if it prints "dclaude", you're inside the container. If working directory is also the dclaude repository itself, you are dogfooding - exercise extreme caution with container lifecycle commands. If there is no dclaude system prompt in your context, you are running on the host.
 
 ## Testing Guidelines
 
@@ -146,6 +148,7 @@ dclaude supports a `.dclaude` config file that applies settings recursively to a
 - `DEBUG` - Enable debug output
 - `CHROME_PORT` - Chrome DevTools port
 - `MOUNT_ROOT` - Mount directory (relative to config file, or absolute path)
+- `AWS_CLI` - AWS config mode (`mount`, `volume`, `none`)
 
 **Note:** Chrome profiles are stored in `.dclaude.d/` directory, keeping `.dclaude` available for the config file.
 
@@ -766,6 +769,95 @@ dclaude
 - Package: `chrome-devtools-mcp@latest`
 - Protocol: Chrome DevTools Protocol (CDP)
 - Connection: `--browserUrl=http://localhost:9222`
+
+## AWS CLI Integration
+
+AWS CLI v2 is baked into the Docker image. Configuration persistence is controlled by `DCLAUDE_AWS_CLI` env var or `AWS_CLI` in `.dclaude` config file.
+
+### Configuration Modes
+
+| Mode | Behavior | Use case |
+|------|----------|----------|
+| `auto` (default) | `mount` if `~/.aws/` exists on host, else `none` | Most users |
+| `mount` | Mount host's `~/.aws` read-write | Leverage existing host config |
+| `volume` | Persist `~/.aws` in Docker volume | Isolated per namespace |
+| `none` | No AWS config mounting | Don't need AWS |
+
+### Mode Details
+
+**mount mode:**
+- Mounts `${HOME}/.aws:/home/claude/.aws` read-write
+- All credential types work: SSO, IAM keys, assumed roles
+- `aws sso login` in container refreshes tokens on host (and vice versa)
+- Warns and skips if `~/.aws` doesn't exist on host
+
+**volume mode:**
+- Volume naming: `dclaude-aws` / `dclaude-{namespace}-aws`
+- Isolated from host — persists across container recreations
+- Use `dclaude aws` subcommand to copy profiles from host
+- Entrypoint fixes ownership (`chown claude:claude`)
+
+**auto mode resolution:**
+- `resolve_aws_cli_mode()` function in dclaude script
+- Checks if `~/.aws/` exists on host → `mount`, otherwise → `none`
+
+### The `dclaude aws` Subcommands
+
+#### `dclaude aws configure`
+
+Copies non-sensitive AWS config from host to container (volume mode only).
+
+**Flow:**
+1. Checks mode is `volume` (errors otherwise with helpful message)
+2. Shows existing config in container if present, asks to overwrite
+3. Checks host's `~/.aws/config`
+4. Shows contents and asks to copy
+5. Copies only `config` file (profiles, regions, SSO URLs) — no credentials or tokens
+
+**What gets copied:**
+- `~/.aws/config` — profiles, SSO start URLs, account IDs, regions, output format
+
+**What does NOT get copied:**
+- `~/.aws/credentials` — access keys (sensitive)
+- `~/.aws/sso/cache/` — SSO tokens (sensitive, ephemeral)
+- `~/.aws/cli/cache/` — assumed role tokens (sensitive, ephemeral)
+
+#### `dclaude aws login`
+
+Pass-through to `aws login` inside the container (like `dclaude gh` runs `gh auth login`).
+
+```bash
+dclaude aws login                      # Default profile
+dclaude aws login --profile staging    # Specific profile
+```
+
+Uses `aws login` (not `aws sso login`) — this is the more universal command that works for both IAM console users and SSO users. All arguments are forwarded to `aws login` in the container.
+
+### Technical Implementation
+
+**Config precedence:**
+```
+DCLAUDE_AWS_CLI env var > AWS_CLI in .dclaude file > auto-detect
+```
+
+**Docker args:**
+```bash
+# mount mode
+-v "${HOME}/.aws:/home/claude/.aws"
+
+# volume mode
+-v "dclaude-aws:/home/claude/.aws"
+# or with namespace:
+-v "dclaude-${NAMESPACE}-aws:/home/claude/.aws"
+```
+
+**Entrypoint (docker-entrypoint.sh):**
+```bash
+# Fix .aws volume ownership (same pattern as .claude volume)
+chown -R claude:claude /home/claude/.aws 2>/dev/null || true
+```
+
+**System context:** `generate_system_context()` includes AWS CLI mode info so Claude knows whether credentials are available.
 
 ## SSH Key and Server Management
 

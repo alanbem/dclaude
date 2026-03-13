@@ -135,6 +135,9 @@ load_config_file() {
                         fi
                     fi
                     ;;
+                AWS_CLI)
+                    [[ -z "${DCLAUDE_AWS_CLI:-}" ]] && DCLAUDE_AWS_CLI="$value"
+                    ;;
             esac
         fi
     done < "$config_file"
@@ -151,6 +154,7 @@ readonly DEBUG="${DCLAUDE_DEBUG:-false}"
 readonly GIT_AUTH_MODE="${DCLAUDE_GIT_AUTH:-auto}"  # auto, agent-forwarding, key-mount, none
 readonly NAMESPACE="${DCLAUDE_NAMESPACE:-}"
 CHROME_PORT="${DCLAUDE_CHROME_PORT:-9222}"
+readonly AWS_CLI_MODE="${DCLAUDE_AWS_CLI:-auto}"  # auto, mount, volume, none
 
 # Show config file if loaded (always at info level, details at debug)
 if [[ -n "$DCLAUDE_CONFIG_FILE" ]]; then
@@ -161,6 +165,7 @@ if [[ -n "$DCLAUDE_CONFIG_FILE" ]]; then
         [[ -n "${DCLAUDE_GIT_AUTH:-}" ]] && debug "  GIT_AUTH=$DCLAUDE_GIT_AUTH"
         [[ -n "${DCLAUDE_CHROME_PORT:-}" ]] && debug "  CHROME_PORT=$DCLAUDE_CHROME_PORT"
         [[ -n "${DCLAUDE_MOUNT_ROOT:-}" ]] && debug "  MOUNT_ROOT=$DCLAUDE_MOUNT_ROOT"
+        [[ -n "${DCLAUDE_AWS_CLI:-}" ]] && debug "  AWS_CLI=$DCLAUDE_AWS_CLI"
     fi
 fi
 
@@ -510,6 +515,36 @@ get_volume_name() {
     fi
 }
 
+# Get AWS volume name (includes namespace if set)
+get_aws_volume_name() {
+    if [[ -n "$NAMESPACE" ]]; then
+        echo "${VOLUME_PREFIX}-${NAMESPACE}-aws"
+    else
+        echo "${VOLUME_PREFIX}-aws"
+    fi
+}
+
+# Resolve AWS CLI mode from configured value
+# auto → mount (if ~/.aws exists) or none
+resolve_aws_cli_mode() {
+    case "$AWS_CLI_MODE" in
+        mount|volume|none)
+            echo "$AWS_CLI_MODE"
+            ;;
+        auto)
+            if [[ -d "${HOME}/.aws" ]]; then
+                echo "mount"
+            else
+                echo "none"
+            fi
+            ;;
+        *)
+            warning "Unknown AWS_CLI mode: $AWS_CLI_MODE (using none)"
+            echo "none"
+            ;;
+    esac
+}
+
 # Create Docker volumes if they don't exist
 create_volumes() {
     # Create essential volume for Claude CLI persistence
@@ -525,6 +560,24 @@ create_volumes() {
         debug "Volume created successfully: $volume"
     else
         debug "Volume exists: $volume"
+    fi
+
+    # Create AWS volume if volume mode is active
+    local aws_mode
+    aws_mode=$(resolve_aws_cli_mode)
+    if [[ "$aws_mode" == "volume" ]]; then
+        local aws_volume
+        aws_volume=$(get_aws_volume_name)
+        if ! docker volume inspect "$aws_volume" &> /dev/null; then
+            info "Creating AWS volume: $aws_volume"
+            if ! docker volume create "$aws_volume" > /dev/null; then
+                error "Failed to create volume: $aws_volume"
+                exit 1
+            fi
+            debug "Volume created successfully: $aws_volume"
+        else
+            debug "Volume exists: $aws_volume"
+        fi
     fi
 }
 
@@ -660,6 +713,7 @@ generate_system_context() {
     local has_docker="${3:-false}"
     local platform="${4:-unknown}"
     local docker_socket="${5:-}"
+    local aws_cli_mode="${6:-none}"
 
     cat <<'EOF'
 
@@ -806,8 +860,36 @@ EOF
 ## Development Tools Available
 - **Languages**: Node.js 20+, Python 3
 - **Package Managers**: npm, pip, Homebrew/Linuxbrew
-- **Tools**: git, gh (GitHub CLI), docker, docker-compose, curl, tmux, nano
+- **Tools**: git, gh (GitHub CLI), docker, docker-compose, aws (AWS CLI v2), curl, tmux, nano
 - **Shell**: bash (your commands execute in bash shell)
+EOF
+
+    # AWS CLI context
+    case "$aws_cli_mode" in
+        mount)
+            cat <<'EOF'
+- **AWS CLI**: Configured — credentials mounted from host's `~/.aws` directory
+  - All host AWS profiles, SSO config, and credentials are available
+  - Changes to AWS config (e.g., `aws sso login`) are shared with host
+EOF
+            ;;
+        volume)
+            cat <<'EOF'
+- **AWS CLI**: Configured — credentials stored in persistent Docker volume
+  - AWS config is isolated from host and persists across container recreations
+  - Run `aws configure` or `aws configure sso` to set up credentials
+EOF
+            ;;
+        *)
+            cat <<'EOF'
+- **AWS CLI**: Installed but no credentials configured
+  - User can set `DCLAUDE_AWS_CLI=mount` when launching dclaude to use host's `~/.aws` config
+  - User can set `DCLAUDE_AWS_CLI=volume` when launching dclaude for isolated persistent config
+EOF
+            ;;
+    esac
+
+    cat <<'EOF'
 
 ## Git Configuration Requirements
 **IMPORTANT**: Before performing any git operations (commit, push, etc.), you MUST:
@@ -1589,8 +1671,11 @@ main() {
         local has_docker="false"
         [[ -n "$DOCKER_SOCKET" ]] && [[ -S "$DOCKER_SOCKET" ]] && has_docker="true"
 
+        local resolved_aws_cli_mode
+        resolved_aws_cli_mode=$(resolve_aws_cli_mode)
+
         local system_context
-        system_context=$(generate_system_context "$network_mode" "$resolved_git_auth" "$has_docker" "$platform" "$DOCKER_SOCKET")
+        system_context=$(generate_system_context "$network_mode" "$resolved_git_auth" "$has_docker" "$platform" "$DOCKER_SOCKET" "$resolved_aws_cli_mode")
 
         claude_args+=("--append-system-prompt" "$system_context")
         debug "System context enabled (${#system_context} chars, has_docker=$has_docker, git_auth=$resolved_git_auth, platform=$platform)"
@@ -1802,6 +1887,32 @@ main() {
     while IFS= read -r -d '' ssh_arg; do
         [[ -n "$ssh_arg" ]] && DOCKER_ARGS+=("$ssh_arg")
     done < <(handle_git_auth)
+
+    # Handle AWS CLI configuration mounting
+    local resolved_aws_mode
+    resolved_aws_mode=$(resolve_aws_cli_mode)
+    # Pass mode to entrypoint so it knows whether to chown .aws (volume only)
+    DOCKER_ARGS+=(-e "DCLAUDE_AWS_CLI_MODE=${resolved_aws_mode}")
+    case "$resolved_aws_mode" in
+        mount)
+            if [[ -d "${HOME}/.aws" ]]; then
+                DOCKER_ARGS+=(-v "${HOME}/.aws:/home/claude/.aws")
+                info "AWS CLI: mounting host ~/.aws"
+                debug "AWS config mounted from host: ${HOME}/.aws"
+            else
+                warning "AWS_CLI=mount but ~/.aws not found, skipping"
+            fi
+            ;;
+        volume)
+            local aws_volume
+            aws_volume=$(get_aws_volume_name)
+            DOCKER_ARGS+=(-v "${aws_volume}:/home/claude/.aws")
+            debug "AWS config using volume: $aws_volume"
+            ;;
+        none)
+            debug "AWS CLI config mounting disabled"
+            ;;
+    esac
 
     # Add any additional environment variables
     if [[ -n "${CLAUDE_MODEL:-}" ]]; then
@@ -2594,6 +2705,129 @@ cmd_rm() {
 }
 
 # Subcommand: configure git identity
+cmd_aws_configure() {
+    local container_name="$1"
+
+    # This subcommand only makes sense for volume mode
+    local resolved_mode
+    resolved_mode=$(resolve_aws_cli_mode)
+    if [[ "$resolved_mode" != "volume" ]]; then
+        error "dclaude aws configure is only for AWS_CLI=volume mode"
+        if [[ "$resolved_mode" == "mount" ]]; then
+            info "Current mode is 'mount' — host's ~/.aws is already available in the container"
+        else
+            info "Set DCLAUDE_AWS_CLI=volume to use persistent AWS volume"
+        fi
+        exit 1
+    fi
+
+    echo ""
+    echo "AWS CLI Configuration"
+    echo "─────────────────────"
+
+    # Check existing config in container
+    local existing_config
+    existing_config=$(docker exec -u claude "$container_name" cat /home/claude/.aws/config 2>/dev/null || echo "")
+
+    if [[ -n "$existing_config" ]]; then
+        echo "Current config in container:"
+        echo "$existing_config" | sed 's/^/  /'
+        echo ""
+        read -p "Overwrite with host config? [y/N]: " overwrite
+        if [[ "$overwrite" != "y" && "$overwrite" != "Y" ]]; then
+            exit 0
+        fi
+    fi
+
+    # Check host config
+    if [[ ! -f "${HOME}/.aws/config" ]]; then
+        error "No ~/.aws/config found on host"
+        info "Run 'aws configure sso' on your host first, then re-run this command"
+        exit 1
+    fi
+
+    echo "Found on host:"
+    sed 's/^/  /' "${HOME}/.aws/config"
+    echo ""
+    info "Only config (profiles, regions, SSO URLs) will be copied — no credentials or tokens"
+    echo ""
+    read -p "Copy to container? [Y/n]: " copy
+    if [[ "$copy" == "n" || "$copy" == "N" ]]; then
+        exit 0
+    fi
+
+    # Copy config file into container (docker cp copies as root, fix ownership after)
+    docker exec -u claude "$container_name" mkdir -p /home/claude/.aws
+    docker cp "${HOME}/.aws/config" "${container_name}:/home/claude/.aws/config"
+    docker exec "$container_name" chown claude:claude /home/claude/.aws /home/claude/.aws/config
+    docker exec "$container_name" chmod 600 /home/claude/.aws/config
+
+    echo ""
+    success "AWS config copied to container"
+    info "Run 'dclaude aws login' or 'aws login' inside dclaude to authenticate"
+    exit 0
+}
+
+cmd_aws_login() {
+    local container_name="$1"
+    shift
+
+    info "Starting AWS login..."
+    exec docker exec -it -u claude "$container_name" aws login "$@"
+}
+
+cmd_aws() {
+    local container_name=$(get_container_name "$HOST_PATH")
+
+    # Check if container exists
+    if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        error "No container found for this directory"
+        info "Run 'dclaude' first to create a container"
+        exit 1
+    fi
+
+    # Check if container is running
+    local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
+    if [[ "$container_status" != "running" ]]; then
+        if [[ "$container_status" == "exited" ]]; then
+            info "Starting container: $container_name"
+            docker start "$container_name" >/dev/null
+            sleep 1
+        else
+            error "Container $container_name is in unexpected state: $container_status"
+            exit 1
+        fi
+    fi
+
+    # Dispatch subcommands
+    local subcmd="${1:-}"
+    case "$subcmd" in
+        configure)
+            shift
+            cmd_aws_configure "$container_name" "$@"
+            ;;
+        login)
+            shift
+            cmd_aws_login "$container_name" "$@"
+            ;;
+        --help|-h|"")
+            echo "Usage:"
+            echo "  dclaude aws configure    Copy AWS config from host (volume mode)"
+            echo "  dclaude aws login        Run AWS login in container"
+            echo "  dclaude aws login --profile <name>  Login with specific profile"
+            exit 0
+            ;;
+        *)
+            error "Unknown subcommand: $subcmd"
+            echo "Usage:"
+            echo "  dclaude aws configure    Copy AWS config from host (volume mode)"
+            echo "  dclaude aws login        Run AWS login in container"
+            echo "  dclaude aws login --profile <name>  Login with specific profile"
+            exit 1
+            ;;
+    esac
+}
+
 cmd_git() {
     local container_name=$(get_container_name "$HOST_PATH")
 
@@ -2733,6 +2967,10 @@ if [[ $# -gt 0 ]]; then
             shift
             cmd_git "$@"
             ;;
+        aws)
+            shift
+            cmd_aws "$@"
+            ;;
         --help|-h|help)
             cat << 'EOF'
 dclaude - Dockerized Claude Code Launcher
@@ -2749,6 +2987,8 @@ Usage:
   dclaude ssh keys            Load SSH keys into agent
   dclaude ssh server          Start SSH server for remote access
   dclaude git                 Configure git identity (name/email)
+  dclaude aws configure       Copy AWS config from host to container (volume mode)
+  dclaude aws login           Run AWS login in container
   dclaude chrome [options]    Launch Chrome with DevTools and MCP integration
   dclaude gh                  Authenticate GitHub CLI (runs gh auth login)
   dclaude exec [command]      Execute command in container (default: bash)
@@ -2763,6 +3003,7 @@ Environment Variables:
   DCLAUDE_GIT_AUTH           SSH auth for Git: auto, agent-forwarding, key-mount, none
   DCLAUDE_NETWORK            Network mode: auto, host, bridge
   DCLAUDE_MOUNT_ROOT         Mount parent directory (absolute or relative path)
+  DCLAUDE_AWS_CLI            AWS config mode: auto, mount, volume, none
   DCLAUDE_DOCKER_SOCKET      Override Docker socket path
   DCLAUDE_TMUX_SESSION       Custom tmux session name (default: claude-TIMESTAMP)
   DCLAUDE_CHROME_BIN         Chrome executable path (auto-detected if not set)
@@ -2774,6 +3015,7 @@ Configuration File (.dclaude):
   Create a .dclaude file at project root to configure dclaude for that tree:
     NAMESPACE=mycompany
     NETWORK=host
+    AWS_CLI=mount
     DEBUG=true
     MOUNT_ROOT=.           # Mount config file's directory
     MOUNT_ROOT=..          # Mount parent of config file's directory
