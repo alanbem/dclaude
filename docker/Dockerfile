@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tmux \
     locales \
     tini \
+    unzip \
     wget \
     # Build tools (required for Homebrew)
     build-essential \
@@ -108,6 +109,13 @@ ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/home/c
 ENV HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew" \
     HOMEBREW_CELLAR="/home/linuxbrew/.linuxbrew/Cellar" \
     HOMEBREW_REPOSITORY="/home/linuxbrew/.linuxbrew/Homebrew"
+
+# Install AWS CLI v2
+# Uses official bundled installer; cleanup removes installer artifacts to save ~100MB
+RUN curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip \
+    && unzip -q /tmp/awscliv2.zip -d /tmp \
+    && /tmp/aws/install \
+    && rm -rf /tmp/awscliv2.zip /tmp/aws
 
 # Switch to claude user temporarily for npm/package setup
 USER claude

@@ -154,6 +154,32 @@ dclaude chrome                    # Launch Chrome with DevTools
 dclaude                           # Claude can now interact with the browser
 ```
 
+### AWS CLI Integration
+
+AWS CLI v2 is pre-installed in the container. Configure how AWS credentials are provided:
+
+```bash
+# Auto (default): mounts ~/.aws from host if it exists, otherwise no config
+dclaude
+
+# Mount host's ~/.aws directory (read-write, shared with host)
+DCLAUDE_AWS_CLI=mount dclaude
+
+# Use isolated Docker volume (persists across container recreations)
+DCLAUDE_AWS_CLI=volume dclaude
+
+# No AWS config mounting
+DCLAUDE_AWS_CLI=none dclaude
+```
+
+**Volume mode** provides isolated AWS config per namespace:
+
+```bash
+dclaude aws configure                  # Copy ~/.aws/config (profiles, regions) into container
+dclaude aws login                      # Run 'aws login' in container
+dclaude aws login --profile staging    # Login with specific profile
+```
+
 ### iTerm2 Shell Integration
 
 If you use iTerm2 on macOS, dclaude automatically enables [iTerm2 Shell Integration](https://iterm2.com/documentation-shell-integration.html):
@@ -176,6 +202,7 @@ dclaude automatically tells Claude about its container environment so it can giv
 - **Network mode** - Whether `localhost` works or needs `host.docker.internal`
 - **Docker access** - Whether Docker commands are available
 - **SSH auth method** - How git authentication is configured
+- **AWS CLI** - Whether and how AWS credentials are configured
 - **Path mirroring** - That file paths match the host
 
 This helps Claude understand its environment without you explaining it. Disable if needed:
@@ -198,6 +225,7 @@ DCLAUDE_SYSTEM_CONTEXT=false dclaude
 | `DCLAUDE_QUIET` | `false` | Suppress info messages |
 | `DCLAUDE_NO_UPDATE` | `false` | Skip image update check |
 | `DCLAUDE_SYSTEM_CONTEXT` | `true` | Inform Claude about container environment |
+| `DCLAUDE_AWS_CLI` | `auto` | AWS config: `auto`, `mount`, `volume`, `none` |
 | `DCLAUDE_ITERM2` | `true` | Enable iTerm2 shell integration (only affects iTerm2) |
 
 ## Configuration File
@@ -223,6 +251,7 @@ dclaude walks up the directory tree to find `.dclaude` files. Any dclaude sessio
 | `MOUNT_ROOT` | Mount directory (relative to config file, or absolute path) |
 | `DEBUG` | Enable debug output (`true`, `false`) |
 | `CHROME_PORT` | Chrome DevTools port |
+| `AWS_CLI` | AWS config mode (`mount`, `volume`, `none`) |
 
 **Precedence:** Environment variables override `.dclaude` file settings.
 
@@ -330,6 +359,7 @@ The container includes:
 - **Docker CLI** and **Docker Compose**
 - **Git**, **GitHub CLI** (`gh`), common dev tools
 - **tmux** for session management
+- **AWS CLI v2** for cloud operations
 - **SSH server** for IDE integration
 
 ## Troubleshooting
