@@ -1573,6 +1573,16 @@ main() {
         debug "Git auth: $resolved_git_auth (user-specified)"
     fi
 
+    # Warn if agent-forwarding is active but no keys are loaded
+    if [[ "$resolved_git_auth" == "agent-forwarding" ]]; then
+        local ssh_add_rc=0
+        ssh-add -l >/dev/null 2>&1 || ssh_add_rc=$?
+        if [[ $ssh_add_rc -eq 1 ]]; then
+            warning "SSH agent has no keys loaded — SSH won't work inside container."
+            warning "Run 'dclaude ssh keys' to load your keys."
+        fi
+    fi
+
     # Generate system context for Claude (if enabled) - must be done early for all code paths
     local claude_args=()
     if [[ "$ENABLE_SYSTEM_CONTEXT" == "true" ]]; then
@@ -2269,8 +2279,117 @@ cmd_stop() {
     exit 0
 }
 
-# Subcommand: SSH server for remote access (JetBrains Gateway, debugging, etc.)
+# Subcommand: SSH — dispatches to 'keys', 'server', or both
 cmd_ssh() {
+    local rc=0
+    case "${1:-}" in
+        keys)
+            shift
+            cmd_ssh_keys "$@" || rc=$?
+            ;;
+        server)
+            shift
+            cmd_ssh_server "$@" || rc=$?
+            ;;
+        --help|-h)
+            cat << 'SSH_HELP'
+dclaude ssh - SSH Key and Server Management
+
+Usage:
+  dclaude ssh              Load SSH keys into agent and start SSH server
+  dclaude ssh keys         Load SSH keys into agent
+  dclaude ssh server       Start SSH server and show connection info
+  dclaude ssh server --stop  Stop SSH server
+
+SSH_HELP
+            exit 0
+            ;;
+        "")
+            # Bare 'dclaude ssh': load keys (non-fatal), then start server
+            cmd_ssh_keys "$@" || true
+            echo ""
+            cmd_ssh_server "$@" || rc=$?
+            ;;
+        *)
+            error "Unknown subcommand: $1"
+            info "Usage: dclaude ssh [keys | server]"
+            exit 1
+            ;;
+    esac
+    exit "$rc"
+}
+
+# Subcommand: SSH key loading
+cmd_ssh_keys() {
+    # Parse flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --help|-h)
+                cat << 'SSH_KEYS_HELP'
+dclaude ssh keys - Load SSH Keys into Agent
+
+Usage:
+  dclaude ssh keys         Detect and load SSH keys from ~/.ssh/
+
+Detects private keys (id_rsa, id_ed25519, etc.) in ~/.ssh/ and loads
+them into the SSH agent via ssh-add. May prompt for passphrases.
+
+SSH_KEYS_HELP
+                return 0
+                ;;
+            *)
+                error "Unknown option: $1"
+                info "Usage: dclaude ssh keys"
+                return 1
+                ;;
+        esac
+    done
+
+    local ssh_dir="${HOME}/.ssh"
+    if [[ ! -d "$ssh_dir" ]]; then
+        error "No ~/.ssh directory found"
+        return 1
+    fi
+
+    # Detect private key files
+    local keys=()
+    for key_file in "$ssh_dir"/id_*; do
+        [[ -f "$key_file" ]] || continue
+        # Skip public keys and certificates
+        [[ "$key_file" == *.pub ]] && continue
+        [[ "$key_file" == *-cert.pub ]] && continue
+        keys+=("$key_file")
+    done
+
+    if [[ ${#keys[@]} -eq 0 ]]; then
+        warning "No SSH keys found in ~/.ssh/"
+        info "Generate a key with: ssh-keygen -t ed25519"
+        return 1
+    fi
+
+    info "Loading SSH keys..."
+    local loaded=0
+    for key_file in "${keys[@]}"; do
+        local display_path="~/.ssh/$(basename "$key_file")"
+        if ssh-add "$key_file" 2>/dev/null; then
+            success "  $display_path"
+            loaded=$((loaded + 1))
+        else
+            warning "  $display_path (failed — wrong passphrase or unsupported key)"
+        fi
+    done
+
+    echo ""
+    if [[ $loaded -gt 0 ]]; then
+        success "$loaded key(s) loaded into SSH agent."
+    else
+        error "No keys were loaded"
+        return 1
+    fi
+}
+
+# Subcommand: SSH server for remote access (JetBrains Gateway, debugging, etc.)
+cmd_ssh_server() {
     local action=""
 
     # Parse flags
@@ -2281,12 +2400,12 @@ cmd_ssh() {
                 shift
                 ;;
             --help|-h)
-                cat << 'SSH_HELP'
-dclaude ssh - SSH Server for Remote Access
+                cat << 'SSH_SERVER_HELP'
+dclaude ssh server - SSH Server for Remote Access
 
 Usage:
-  dclaude ssh              Start SSH server and show connection info
-  dclaude ssh --stop       Stop SSH server
+  dclaude ssh server         Start SSH server and show connection info
+  dclaude ssh server --stop  Stop SSH server
 
 Connection:
   ssh claude@localhost -p <port>
@@ -2301,20 +2420,20 @@ Use Cases:
 
 JetBrains Gateway Setup:
   1. Start container: dclaude
-  2. Start SSH: dclaude ssh
+  2. Start SSH: dclaude ssh server
   3. Open JetBrains Gateway
   4. New Connection → SSH → localhost:<port shown above>
   5. Username: claude, Password: claude
   6. Gateway will download and install IDE backend automatically
   7. Select your project directory
 
-SSH_HELP
-                exit 0
+SSH_SERVER_HELP
+                return 0
                 ;;
             *)
                 error "Unknown option: $1"
-                info "Usage: dclaude ssh [--stop]"
-                exit 1
+                info "Usage: dclaude ssh server [--stop]"
+                return 1
                 ;;
         esac
     done
@@ -2325,7 +2444,7 @@ SSH_HELP
     if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
         error "No container found for this directory"
         info "Run 'dclaude' first to create a persistent container"
-        exit 1
+        return 1
     fi
 
     local container_status=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
@@ -2337,7 +2456,7 @@ SSH_HELP
             sleep 1
         else
             error "Container $container_name is in unexpected state: $container_status"
-            exit 1
+            return 1
         fi
     fi
 
@@ -2353,9 +2472,9 @@ SSH_HELP
         echo ""
         echo "  dclaude rm -f"
         echo "  dclaude"
-        echo "  dclaude ssh"
+        echo "  dclaude ssh server"
         echo ""
-        exit 1
+        return 1
     fi
 
     case "$action" in
@@ -2397,8 +2516,6 @@ SSH_HELP
             echo ""
             ;;
     esac
-
-    exit 0
 }
 
 # Subcommand: remove container for current directory
@@ -2628,7 +2745,9 @@ Usage:
   dclaude update              Update Claude CLI inside container
   dclaude stop                Stop container for current directory
   dclaude rm [-f]             Remove container for current directory
-  dclaude ssh                 Start SSH server for remote access
+  dclaude ssh                 Load SSH keys and start SSH server
+  dclaude ssh keys            Load SSH keys into agent
+  dclaude ssh server          Start SSH server for remote access
   dclaude git                 Configure git identity (name/email)
   dclaude chrome [options]    Launch Chrome with DevTools and MCP integration
   dclaude gh                  Authenticate GitHub CLI (runs gh auth login)
@@ -2693,9 +2812,11 @@ Examples:
   dclaude rm                                     # Remove stopped container
   dclaude rm -f                                  # Force remove running container
 
-  # SSH server for remote access (JetBrains Gateway, VS Code Remote, etc.)
-  dclaude ssh                                  # Start SSH server, show connection info
-  dclaude ssh --stop                           # Stop SSH server
+  # SSH key and server management
+  dclaude ssh                                  # Load keys + start SSH server
+  dclaude ssh keys                             # Load SSH keys into agent
+  dclaude ssh server                           # Start SSH server, show connection info
+  dclaude ssh server --stop                    # Stop SSH server
 
   # Launch Chrome with DevTools for MCP integration
   dclaude chrome
