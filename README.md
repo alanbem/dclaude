@@ -1,5 +1,6 @@
 # dclaude — Dockerized Claude Code
 
+[![CI/CD](https://github.com/alanbem/dclaude/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/alanbem/dclaude/actions/workflows/ci-cd.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker Hub](https://img.shields.io/docker/v/alanbem/dclaude?label=Docker%20Hub)](https://hub.docker.com/r/alanbem/dclaude)
 [![npm](https://img.shields.io/npm/v/@alanbem/dclaude)](https://www.npmjs.com/package/@alanbem/dclaude)
