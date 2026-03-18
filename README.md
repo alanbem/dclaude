@@ -117,7 +117,7 @@ DCLAUDE_GIT_AUTH=agent-forwarding dclaude
 DCLAUDE_GIT_AUTH=key-mount dclaude
 ```
 
-Make sure your SSH key is loaded: `ssh-add -l` (see also [SSH Key and Server Management](#ssh-key-and-server-management))
+dclaude warns you if no keys are loaded and suggests `dclaude ssh keys` to load them automatically (see also [SSH Key and Server Management](#ssh-key-and-server-management)).
 
 ### Homebrew Support
 
