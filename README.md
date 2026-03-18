@@ -258,6 +258,8 @@ dclaude walks up the directory tree to find `.dclaude` files. Any dclaude sessio
 | `CHROME_PORT` | Chrome DevTools port |
 | `AWS_CLI` | AWS config mode (`mount`, `volume`, `none`) |
 
+Config file variables are the unprefixed equivalents of `DCLAUDE_*` environment variables (e.g., `NAMESPACE` in `.dclaude` = `DCLAUDE_NAMESPACE` env var).
+
 **Precedence:** Environment variables override `.dclaude` file settings.
 
 ## Namespace Isolation
