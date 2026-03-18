@@ -231,6 +231,7 @@ DCLAUDE_SYSTEM_CONTEXT=false dclaude
 | `DCLAUDE_NO_UPDATE` | `false` | Skip image update check |
 | `DCLAUDE_SYSTEM_CONTEXT` | `true` | Inform Claude about container environment |
 | `DCLAUDE_AWS_CLI` | `auto` | AWS config: `auto`, `mount`, `volume`, `none` |
+| `DCLAUDE_TMUX_SESSION` | `claude-TIMESTAMP` | Custom tmux session name for concurrent sessions |
 | `DCLAUDE_ITERM2` | `true` | Enable iTerm2 shell integration (only affects iTerm2) |
 
 ## Configuration File
