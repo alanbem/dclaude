@@ -566,10 +566,6 @@ set-option -g detach-on-destroy on
 3. All sessions exit → Tmux server shuts down
 4. Container keeps running → Ready for next `dclaude` invocation
 
-### Known Issues (Fixed)
-- ❌ **Session switching bug**: Using `detach-on-destroy off` caused sessions to switch instead of exit (FIXED: use `on`)
-- ❌ **Input lag in second session**: Creating detached session then attaching caused double tmux processes (FIXED: use direct `new-session`)
-
 ### TTY Detection and Interactive Mode
 
 **Key concept**: Interactivity depends on how the command is called, not on the arguments passed to Claude.
@@ -831,7 +827,7 @@ dclaude aws login                      # Default profile
 dclaude aws login --profile staging    # Specific profile
 ```
 
-Uses `aws login` (not `aws sso login`) — this is the more universal command that works for both IAM console users and SSO users. All arguments are forwarded to `aws login` in the container.
+Uses `aws login` — a newer AWS CLI command that provides a unified login experience for both IAM console users and SSO users (supersedes `aws sso login` for SSO-only flows). All arguments are forwarded to `aws login` in the container.
 
 ### Technical Implementation
 
@@ -953,10 +949,11 @@ SSH password is hardcoded (`claude:claude`) - suitable for local development onl
 
 ## Security Constraints
 - No sudo in container (removed for security)
-- Docker socket access is privileged - document risks
+- Docker socket access is privileged — grants host-level container management
 - Non-root user with docker group membership only
 - Config mounts are read-only to prevent modification
 - Config mounting is opt-in for security
+- `CLAUDE_UNSAFE_TRUST_WORKSPACE=true` is set in the Dockerfile — this auto-trusts all workspaces, bypassing Claude's interactive workspace permission prompts. This is intentional: container isolation provides the safety boundary (Claude can only access the mounted project directory), making per-workspace trust prompts redundant and disruptive in a containerized context
 
 ### Docker Scout Security Scanning
 

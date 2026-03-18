@@ -1,28 +1,30 @@
-# dclaude
+# dclaude — Dockerized Claude Code
 
+[![CI/CD](https://github.com/alanbem/dclaude/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/alanbem/dclaude/actions/workflows/ci-cd.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker Hub](https://img.shields.io/docker/v/alanbem/dclaude?label=Docker%20Hub)](https://hub.docker.com/r/alanbem/dclaude)
+[![Docker Pulls](https://img.shields.io/docker/pulls/alanbem/dclaude)](https://hub.docker.com/r/alanbem/dclaude)
 [![npm](https://img.shields.io/npm/v/@alanbem/dclaude)](https://www.npmjs.com/package/@alanbem/dclaude)
 
-Run Claude Code CLI in Docker - no local installation needed. Full MCP support, persistent sessions, and seamless host integration.
+Run Claude Code CLI in Docker — no local installation needed. Full MCP support, persistent sessions, and seamless host integration.
 
 ## Why dclaude?
 
 **Claude Code CLI is powerful, but installing it locally means:**
-- Node.js version conflicts
-- Global npm packages cluttering your system
 - MCP servers needing specific Python/Node setups
 - Different behavior across machines
+- Claude has access to your entire filesystem
 
 **dclaude solves this by running Claude in a container that feels native:**
+- **Safer `--dangerously-skip-permissions`** - container isolation means Claude can only access your project, not your whole system
 - Your files appear at the same paths (no `/app` or `/workspace` confusion)
 - Docker commands work (socket is mounted)
 - SSH keys and git config just work
 - Homebrew included - easy migration from local macOS setup
 - Works on Linux, macOS, and Windows
-- **Safer `--dangerously-skip-permissions`** - container isolation means Claude can only access your project, not your whole system
 
 ## Quick Start
+
+> **Prerequisite:** A Docker-compatible runtime such as [Docker Desktop](https://docs.docker.com/get-docker/), [OrbStack](https://orbstack.dev/), or [Colima](https://github.com/abiosoft/colima) must be installed and running.
 
 ### Install via NPM (Recommended)
 
@@ -41,6 +43,8 @@ sudo ln -s ~/tools/dclaude/dclaude /usr/local/bin/dclaude
 # Run (pulls image from Docker Hub automatically)
 dclaude
 ```
+
+> **First run:** The Docker image (~1GB) is pulled automatically on first launch. You'll be prompted to authenticate with your Anthropic account.
 
 ## Basic Usage
 
@@ -69,9 +73,10 @@ dclaude exec brew install ripgrep
 dclaude creates a container that mirrors your host environment:
 
 1. **Path Mirroring**: Your current directory is mounted at the *same path*
-   - On host: `/Users/alice/projects/myapp`
-   - In container: `/Users/alice/projects/myapp`
-   - All your file paths just work
+   ```
+   Host:      /Users/alice/projects/myapp ──mount──> Container: /Users/alice/projects/myapp
+   ```
+   No `/app` or `/workspace` confusion — all your file paths just work
 
 2. **Docker Access**: The Docker socket is mounted, so Claude can build images, run containers, and manage compose stacks
 
@@ -112,7 +117,7 @@ DCLAUDE_GIT_AUTH=agent-forwarding dclaude
 DCLAUDE_GIT_AUTH=key-mount dclaude
 ```
 
-Make sure your SSH key is loaded: `ssh-add -l`
+dclaude warns you if no keys are loaded and suggests `dclaude ssh keys` to load them automatically (see also [SSH Key and Server Management](#ssh-key-and-server-management)).
 
 ### Homebrew Support
 
@@ -132,9 +137,19 @@ dclaude gh                        # Interactive GitHub login
 dclaude exec gh pr list           # Use gh commands
 ```
 
+### Git Configuration
+
+SSH agent forwarding provides authentication for git, but git also needs your identity (name/email) for commits. Use `dclaude git` to configure this:
+
+```bash
+dclaude git                       # Configure git name/email in container
+```
+
+This reads your host's `~/.gitconfig` and offers to copy the identity into the container's persistent volume.
+
 ### SSH Key and Server Management
 
-Load SSH keys and start SSH server for JetBrains Gateway, VS Code Remote, or any SSH client:
+Load SSH keys and start SSH server for JetBrains Gateway, VS Code Remote, or any SSH client (see also [SSH Authentication](#ssh-authentication)):
 
 ```bash
 dclaude ssh                       # Load keys + start SSH server
@@ -147,12 +162,16 @@ dclaude ssh server --stop         # Stop SSH server
 
 ### Chrome DevTools Integration
 
-Control Chrome via MCP for browser automation:
+Control Chrome via MCP for browser automation. Chrome runs on the host with remote debugging; Claude connects from the container:
 
 ```bash
-dclaude chrome                    # Launch Chrome with DevTools
+dclaude chrome                    # Launch Chrome with DevTools + create .mcp.json
+dclaude chrome --port=9223        # Use custom debugging port
+dclaude chrome --setup-only       # Create .mcp.json without launching Chrome
 dclaude                           # Claude can now interact with the browser
 ```
+
+Chrome profiles are stored per-project in `.dclaude.d/chrome/profiles/`. Customize with `DCLAUDE_CHROME_PROFILE`, `DCLAUDE_CHROME_PORT`, `DCLAUDE_CHROME_BIN`, and `DCLAUDE_CHROME_FLAGS`.
 
 ### AWS CLI Integration
 
@@ -211,6 +230,24 @@ This helps Claude understand its environment without you explaining it. Disable 
 DCLAUDE_SYSTEM_CONTEXT=false dclaude
 ```
 
+## Container Management
+
+```bash
+# Session management
+dclaude new                       # Start a new Claude session
+dclaude attach <session>          # Reattach to a named tmux session
+DCLAUDE_TMUX_SESSION=reviewer dclaude  # Start a named session
+
+# Container lifecycle
+dclaude stop                      # Stop container for current directory
+dclaude rm                        # Remove container (add -f to force)
+
+# Maintenance
+dclaude pull                      # Pull latest Docker image
+dclaude update                    # Update Claude CLI inside container
+dclaude shell                     # Open a bash shell (alias for exec)
+```
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -226,6 +263,7 @@ DCLAUDE_SYSTEM_CONTEXT=false dclaude
 | `DCLAUDE_NO_UPDATE` | `false` | Skip image update check |
 | `DCLAUDE_SYSTEM_CONTEXT` | `true` | Inform Claude about container environment |
 | `DCLAUDE_AWS_CLI` | `auto` | AWS config: `auto`, `mount`, `volume`, `none` |
+| `DCLAUDE_TMUX_SESSION` | `claude-TIMESTAMP` | Custom tmux session name for concurrent sessions |
 | `DCLAUDE_ITERM2` | `true` | Enable iTerm2 shell integration (only affects iTerm2) |
 
 ## Configuration File
@@ -252,6 +290,8 @@ dclaude walks up the directory tree to find `.dclaude` files. Any dclaude sessio
 | `DEBUG` | Enable debug output (`true`, `false`) |
 | `CHROME_PORT` | Chrome DevTools port |
 | `AWS_CLI` | AWS config mode (`mount`, `volume`, `none`) |
+
+Config file variables are the unprefixed equivalents of `DCLAUDE_*` environment variables (e.g., `NAMESPACE` in `.dclaude` = `DCLAUDE_NAMESPACE` env var).
 
 **Precedence:** Environment variables override `.dclaude` file settings.
 
@@ -347,13 +387,13 @@ DCLAUDE_NETWORK=bridge dclaude
 |----------|--------|-------|
 | Linux | Full support | Host networking available |
 | macOS | Full support | Host networking with OrbStack or Docker Desktop beta |
-| Windows | Full support | WSL2/Docker Desktop, host networking with beta features |
+| Windows | Full support | Requires WSL2; host networking with Docker Desktop beta features |
 
 ## What's Included
 
 The container includes:
 - **Ubuntu 24.04 LTS** base
-- **Claude Code CLI** (latest)
+- **Claude Code CLI** (latest, AMD64 and ARM64/Apple Silicon)
 - **Node.js 20+**, **Python 3** with pip
 - **Homebrew/Linuxbrew** for package management
 - **Docker CLI** and **Docker Compose**
@@ -417,6 +457,21 @@ mv problematic-dir problematic-dir.tmp && mv problematic-dir.tmp problematic-dir
 
 Upgrading to the latest OrbStack version may also help.
 
+## Shell Completions
+
+Tab completion is available for bash and zsh:
+
+```bash
+# Bash — add to ~/.bashrc
+source "$(npm root -g)/@alanbem/dclaude/completions/dclaude.bash"
+
+# Zsh — add to ~/.zshrc
+source "$(npm root -g)/@alanbem/dclaude/completions/dclaude.zsh"
+
+# Source install — use the repo path directly
+source ~/tools/dclaude/completions/dclaude.bash
+```
+
 ## Project Structure
 
 ```text
@@ -426,7 +481,9 @@ Upgrading to the latest OrbStack version may also help.
 │   ├── Dockerfile          # Container image definition
 │   ├── README.md           # Docker Hub documentation
 │   ├── usr/local/bin/
-│   │   └── docker-entrypoint.sh
+│   │   ├── docker-entrypoint.sh
+│   │   ├── claude-launcher.sh
+│   │   └── tmux-wrapper.sh
 │   └── home/claude/
 │       └── .tmux.conf
 ├── .github/workflows/      # CI/CD (lint, scan, publish)
