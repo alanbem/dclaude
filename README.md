@@ -458,6 +458,18 @@ mv problematic-dir problematic-dir.tmp && mv problematic-dir.tmp problematic-dir
 
 Upgrading to the latest OrbStack version may also help.
 
+## Shell Completions
+
+Tab completion is available for bash and zsh:
+
+```bash
+# Bash — add to ~/.bashrc
+source /path/to/dclaude/completions/dclaude.bash
+
+# Zsh — add to ~/.zshrc
+source /path/to/dclaude/completions/dclaude.zsh
+```
+
 ## Project Structure
 
 ```text
