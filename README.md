@@ -394,7 +394,7 @@ DCLAUDE_NETWORK=bridge dclaude
 
 The container includes:
 - **Ubuntu 24.04 LTS** base
-- **Claude Code CLI** (latest)
+- **Claude Code CLI** (latest, AMD64 and ARM64/Apple Silicon)
 - **Node.js 20+**, **Python 3** with pip
 - **Homebrew/Linuxbrew** for package management
 - **Docker CLI** and **Docker Compose**
