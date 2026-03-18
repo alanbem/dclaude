@@ -24,7 +24,7 @@ Run Claude Code CLI in Docker — no local installation needed. Full MCP support
 
 ## Quick Start
 
-> **Prerequisite:** [Docker](https://docs.docker.com/get-docker/) must be installed and running.
+> **Prerequisite:** A Docker-compatible runtime such as [Docker Desktop](https://docs.docker.com/get-docker/), [OrbStack](https://orbstack.dev/), or [Colima](https://github.com/abiosoft/colima) must be installed and running.
 
 ### Install via NPM (Recommended)
 
