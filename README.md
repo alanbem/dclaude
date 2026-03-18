@@ -10,10 +10,9 @@ Run Claude Code CLI in Docker — no local installation needed. Full MCP support
 ## Why dclaude?
 
 **Claude Code CLI is powerful, but installing it locally means:**
-- Node.js version conflicts
-- Global npm packages cluttering your system
 - MCP servers needing specific Python/Node setups
 - Different behavior across machines
+- Claude has access to your entire filesystem
 
 **dclaude solves this by running Claude in a container that feels native:**
 - **Safer `--dangerously-skip-permissions`** - container isolation means Claude can only access your project, not your whole system
