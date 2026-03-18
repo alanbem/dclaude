@@ -15,12 +15,12 @@ Run Claude Code CLI in Docker — no local installation needed. Full MCP support
 - Different behavior across machines
 
 **dclaude solves this by running Claude in a container that feels native:**
+- **Safer `--dangerously-skip-permissions`** - container isolation means Claude can only access your project, not your whole system
 - Your files appear at the same paths (no `/app` or `/workspace` confusion)
 - Docker commands work (socket is mounted)
 - SSH keys and git config just work
 - Homebrew included - easy migration from local macOS setup
 - Works on Linux, macOS, and Windows
-- **Safer `--dangerously-skip-permissions`** - container isolation means Claude can only access your project, not your whole system
 
 ## Quick Start
 
