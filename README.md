@@ -479,7 +479,9 @@ source /path/to/dclaude/completions/dclaude.zsh
 │   ├── Dockerfile          # Container image definition
 │   ├── README.md           # Docker Hub documentation
 │   ├── usr/local/bin/
-│   │   └── docker-entrypoint.sh
+│   │   ├── docker-entrypoint.sh
+│   │   ├── claude-launcher.sh
+│   │   └── tmux-wrapper.sh
 │   └── home/claude/
 │       └── .tmux.conf
 ├── .github/workflows/      # CI/CD (lint, scan, publish)
