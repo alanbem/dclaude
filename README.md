@@ -352,7 +352,7 @@ DCLAUDE_NETWORK=bridge dclaude
 |----------|--------|-------|
 | Linux | Full support | Host networking available |
 | macOS | Full support | Host networking with OrbStack or Docker Desktop beta |
-| Windows | Full support | WSL2/Docker Desktop, host networking with beta features |
+| Windows | Full support | Requires WSL2; host networking with Docker Desktop beta features |
 
 ## What's Included
 
