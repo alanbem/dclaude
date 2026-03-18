@@ -163,12 +163,16 @@ dclaude ssh server --stop         # Stop SSH server
 
 ### Chrome DevTools Integration
 
-Control Chrome via MCP for browser automation:
+Control Chrome via MCP for browser automation. Chrome runs on the host with remote debugging; Claude connects from the container:
 
 ```bash
-dclaude chrome                    # Launch Chrome with DevTools
+dclaude chrome                    # Launch Chrome with DevTools + create .mcp.json
+dclaude chrome --port=9223        # Use custom debugging port
+dclaude chrome --setup-only       # Create .mcp.json without launching Chrome
 dclaude                           # Claude can now interact with the browser
 ```
+
+Chrome profiles are stored per-project in `.dclaude.d/chrome/profiles/`. Customize with `DCLAUDE_CHROME_PROFILE`, `DCLAUDE_CHROME_PORT`, `DCLAUDE_CHROME_BIN`, and `DCLAUDE_CHROME_FLAGS`.
 
 ### AWS CLI Integration
 
