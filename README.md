@@ -117,7 +117,7 @@ DCLAUDE_GIT_AUTH=agent-forwarding dclaude
 DCLAUDE_GIT_AUTH=key-mount dclaude
 ```
 
-Make sure your SSH key is loaded: `ssh-add -l`
+Make sure your SSH key is loaded: `ssh-add -l` (see also [SSH Key and Server Management](#ssh-key-and-server-management))
 
 ### Homebrew Support
 
@@ -139,7 +139,7 @@ dclaude exec gh pr list           # Use gh commands
 
 ### SSH Key and Server Management
 
-Load SSH keys and start SSH server for JetBrains Gateway, VS Code Remote, or any SSH client:
+Load SSH keys and start SSH server for JetBrains Gateway, VS Code Remote, or any SSH client (see also [SSH Authentication](#ssh-authentication)):
 
 ```bash
 dclaude ssh                       # Load keys + start SSH server
