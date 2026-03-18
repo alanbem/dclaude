@@ -74,9 +74,10 @@ dclaude exec brew install ripgrep
 dclaude creates a container that mirrors your host environment:
 
 1. **Path Mirroring**: Your current directory is mounted at the *same path*
-   - On host: `/Users/alice/projects/myapp`
-   - In container: `/Users/alice/projects/myapp`
-   - All your file paths just work
+   ```
+   Host:      /Users/alice/projects/myapp ──mount──> Container: /Users/alice/projects/myapp
+   ```
+   No `/app` or `/workspace` confusion — all your file paths just work
 
 2. **Docker Access**: The Docker socket is mounted, so Claude can build images, run containers, and manage compose stacks
 
