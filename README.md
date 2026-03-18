@@ -217,6 +217,24 @@ This helps Claude understand its environment without you explaining it. Disable 
 DCLAUDE_SYSTEM_CONTEXT=false dclaude
 ```
 
+## Container Management
+
+```bash
+# Session management
+dclaude new                       # Start a new Claude session
+dclaude attach <session>          # Reattach to a named tmux session
+DCLAUDE_TMUX_SESSION=reviewer dclaude  # Start a named session
+
+# Container lifecycle
+dclaude stop                      # Stop container for current directory
+dclaude rm                        # Remove container (add -f to force)
+
+# Maintenance
+dclaude pull                      # Pull latest Docker image
+dclaude update                    # Update Claude CLI inside container
+dclaude shell                     # Open a bash shell (alias for exec)
+```
+
 ## Environment Variables
 
 | Variable | Default | Description |
