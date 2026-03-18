@@ -44,6 +44,8 @@ sudo ln -s ~/tools/dclaude/dclaude /usr/local/bin/dclaude
 dclaude
 ```
 
+> **First run:** The Docker image (~1GB) is pulled automatically on first launch. You'll be prompted to authenticate with your Anthropic account.
+
 ## Basic Usage
 
 **dclaude passes all arguments directly to Claude CLI** - use it exactly as you would use `claude`:
