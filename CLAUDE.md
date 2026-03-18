@@ -831,7 +831,7 @@ dclaude aws login                      # Default profile
 dclaude aws login --profile staging    # Specific profile
 ```
 
-Uses `aws login` (not `aws sso login`) — this is the more universal command that works for both IAM console users and SSO users. All arguments are forwarded to `aws login` in the container.
+Uses `aws login` — a newer AWS CLI command that provides a unified login experience for both IAM console users and SSO users (supersedes `aws sso login` for SSO-only flows). All arguments are forwarded to `aws login` in the container.
 
 ### Technical Implementation
 
