@@ -1,10 +1,10 @@
-# dclaude
+# dclaude — Dockerized Claude Code
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker Hub](https://img.shields.io/docker/v/alanbem/dclaude?label=Docker%20Hub)](https://hub.docker.com/r/alanbem/dclaude)
 [![npm](https://img.shields.io/npm/v/@alanbem/dclaude)](https://www.npmjs.com/package/@alanbem/dclaude)
 
-Run Claude Code CLI in Docker - no local installation needed. Full MCP support, persistent sessions, and seamless host integration.
+Run Claude Code CLI in Docker — no local installation needed. Full MCP support, persistent sessions, and seamless host integration.
 
 ## Why dclaude?
 
