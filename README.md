@@ -463,10 +463,13 @@ Tab completion is available for bash and zsh:
 
 ```bash
 # Bash — add to ~/.bashrc
-source /path/to/dclaude/completions/dclaude.bash
+source "$(npm root -g)/@alanbem/dclaude/completions/dclaude.bash"
 
 # Zsh — add to ~/.zshrc
-source /path/to/dclaude/completions/dclaude.zsh
+source "$(npm root -g)/@alanbem/dclaude/completions/dclaude.zsh"
+
+# Source install — use the repo path directly
+source ~/tools/dclaude/completions/dclaude.bash
 ```
 
 ## Project Structure
