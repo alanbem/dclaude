@@ -953,10 +953,11 @@ SSH password is hardcoded (`claude:claude`) - suitable for local development onl
 
 ## Security Constraints
 - No sudo in container (removed for security)
-- Docker socket access is privileged - document risks
+- Docker socket access is privileged — grants host-level container management
 - Non-root user with docker group membership only
 - Config mounts are read-only to prevent modification
 - Config mounting is opt-in for security
+- `CLAUDE_UNSAFE_TRUST_WORKSPACE=true` is set in the Dockerfile — this auto-trusts all workspaces, bypassing Claude's interactive workspace permission prompts. This is intentional: container isolation provides the safety boundary (Claude can only access the mounted project directory), making per-workspace trust prompts redundant and disruptive in a containerized context
 
 ### Docker Scout Security Scanning
 
