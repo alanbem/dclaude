@@ -566,10 +566,6 @@ set-option -g detach-on-destroy on
 3. All sessions exit → Tmux server shuts down
 4. Container keeps running → Ready for next `dclaude` invocation
 
-### Known Issues (Fixed)
-- ❌ **Session switching bug**: Using `detach-on-destroy off` caused sessions to switch instead of exit (FIXED: use `on`)
-- ❌ **Input lag in second session**: Creating detached session then attaching caused double tmux processes (FIXED: use direct `new-session`)
-
 ### TTY Detection and Interactive Mode
 
 **Key concept**: Interactivity depends on how the command is called, not on the arguments passed to Claude.
