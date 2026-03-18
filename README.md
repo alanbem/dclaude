@@ -138,6 +138,16 @@ dclaude gh                        # Interactive GitHub login
 dclaude exec gh pr list           # Use gh commands
 ```
 
+### Git Configuration
+
+SSH agent forwarding provides authentication for git, but git also needs your identity (name/email) for commits. Use `dclaude git` to configure this:
+
+```bash
+dclaude git                       # Configure git name/email in container
+```
+
+This reads your host's `~/.gitconfig` and offers to copy the identity into the container's persistent volume.
+
 ### SSH Key and Server Management
 
 Load SSH keys and start SSH server for JetBrains Gateway, VS Code Remote, or any SSH client (see also [SSH Authentication](#ssh-authentication)):
