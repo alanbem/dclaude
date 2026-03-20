@@ -169,7 +169,7 @@ CHROME_PORT="${DCLAUDE_CHROME_PORT:-9222}"
 readonly AWS_CLI_MODE="${DCLAUDE_AWS_CLI:-auto}"  # auto, mount, volume, none
 # Resolve CA_CERT relative paths (env var: relative to PWD, config file: already resolved)
 if [[ -n "${DCLAUDE_CA_CERT:-}" && "${DCLAUDE_CA_CERT}" != /* ]]; then
-    DCLAUDE_CA_CERT=$(realpath "$DCLAUDE_CA_CERT" 2>/dev/null) || true
+    DCLAUDE_CA_CERT=$(realpath "$DCLAUDE_CA_CERT" 2>/dev/null) || DCLAUDE_CA_CERT="$PWD/$DCLAUDE_CA_CERT"
 fi
 readonly CA_CERT="${DCLAUDE_CA_CERT:-}"  # Path to CA certificate for corporate proxies
 
