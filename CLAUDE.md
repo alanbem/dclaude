@@ -149,6 +149,7 @@ dclaude supports a `.dclaude` config file that applies settings recursively to a
 - `CHROME_PORT` - Chrome DevTools port
 - `MOUNT_ROOT` - Mount directory (relative to config file, or absolute path)
 - `AWS_CLI` - AWS config mode (`mount`, `volume`, `none`)
+- `CA_CERT` - Path to CA certificate for corporate SSL inspection (relative to config file, or absolute)
 
 **Note:** Chrome profiles are stored in `.dclaude.d/` directory, keeping `.dclaude` available for the config file.
 

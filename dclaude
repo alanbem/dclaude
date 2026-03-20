@@ -138,6 +138,18 @@ load_config_file() {
                 AWS_CLI)
                     [[ -z "${DCLAUDE_AWS_CLI:-}" ]] && DCLAUDE_AWS_CLI="$value"
                     ;;
+                CA_CERT)
+                    if [[ -z "${DCLAUDE_CA_CERT:-}" ]]; then
+                        # Resolve relative paths relative to config file's directory
+                        if [[ "$value" != /* ]]; then
+                            local config_dir
+                            config_dir=$(dirname "$config_file")
+                            DCLAUDE_CA_CERT=$(cd "$config_dir" && realpath "$value" 2>/dev/null)
+                        else
+                            DCLAUDE_CA_CERT="$value"
+                        fi
+                    fi
+                    ;;
             esac
         fi
     done < "$config_file"
@@ -155,6 +167,11 @@ readonly GIT_AUTH_MODE="${DCLAUDE_GIT_AUTH:-auto}"  # auto, agent-forwarding, ke
 readonly NAMESPACE="${DCLAUDE_NAMESPACE:-}"
 CHROME_PORT="${DCLAUDE_CHROME_PORT:-9222}"
 readonly AWS_CLI_MODE="${DCLAUDE_AWS_CLI:-auto}"  # auto, mount, volume, none
+# Resolve CA_CERT relative paths (env var: relative to PWD, config file: already resolved)
+if [[ -n "${DCLAUDE_CA_CERT:-}" && "${DCLAUDE_CA_CERT}" != /* ]]; then
+    DCLAUDE_CA_CERT=$(realpath "$DCLAUDE_CA_CERT" 2>/dev/null) || DCLAUDE_CA_CERT="$PWD/$DCLAUDE_CA_CERT"
+fi
+readonly CA_CERT="${DCLAUDE_CA_CERT:-}"  # Path to CA certificate for corporate proxies
 
 # Show config file if loaded (always at info level, details at debug)
 if [[ -n "$DCLAUDE_CONFIG_FILE" ]]; then
@@ -166,6 +183,7 @@ if [[ -n "$DCLAUDE_CONFIG_FILE" ]]; then
         [[ -n "${DCLAUDE_CHROME_PORT:-}" ]] && debug "  CHROME_PORT=$DCLAUDE_CHROME_PORT"
         [[ -n "${DCLAUDE_MOUNT_ROOT:-}" ]] && debug "  MOUNT_ROOT=$DCLAUDE_MOUNT_ROOT"
         [[ -n "${DCLAUDE_AWS_CLI:-}" ]] && debug "  AWS_CLI=$DCLAUDE_AWS_CLI"
+        [[ -n "$CA_CERT" ]] && debug "  CA_CERT=$CA_CERT"
     fi
 fi
 
@@ -1913,6 +1931,23 @@ main() {
             debug "AWS CLI config mounting disabled"
             ;;
     esac
+
+    # Handle CA certificate for corporate proxies / SSL inspection
+    # The cert file must be within the mounted directory tree to be accessible inside the container
+    if [[ -n "$CA_CERT" ]]; then
+        if [[ ! -f "$CA_CERT" ]]; then
+            warning "CA certificate not found: $CA_CERT"
+        elif [[ "$CA_CERT" != "$MOUNT_ROOT"* ]]; then
+            warning "CA certificate is outside the mounted directory: $CA_CERT"
+            warning "It must be within: $MOUNT_ROOT"
+        else
+            DOCKER_ARGS+=(
+                -e "NODE_EXTRA_CA_CERTS=${CA_CERT}"
+                -e "SSL_CERT_FILE=${CA_CERT}"
+            )
+            info "CA certificate: $CA_CERT"
+        fi
+    fi
 
     # Add any additional environment variables
     if [[ -n "${CLAUDE_MODEL:-}" ]]; then
