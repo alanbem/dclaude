@@ -290,4 +290,4 @@ jobs:
           npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Publish to NPM
-        run: npm publish --access public
+        run: npm publish --access public --provenance
