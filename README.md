@@ -265,6 +265,7 @@ dclaude shell                     # Open a bash shell (alias for exec)
 | `DCLAUDE_AWS_CLI` | `auto` | AWS config: `auto`, `mount`, `volume`, `none` |
 | `DCLAUDE_TMUX_SESSION` | `claude-TIMESTAMP` | Custom tmux session name for concurrent sessions |
 | `DCLAUDE_ITERM2` | `true` | Enable iTerm2 shell integration (only affects iTerm2) |
+| `DCLAUDE_CA_CERT` | (none) | Path to CA certificate for corporate SSL inspection |
 
 ## Configuration File
 
@@ -275,6 +276,7 @@ Create a `.dclaude` file at your project root to configure dclaude for that dire
 NAMESPACE=mycompany
 NETWORK=host
 DEBUG=true
+CA_CERT=certs/corporate-ca.pem
 ```
 
 dclaude walks up the directory tree to find `.dclaude` files. Any dclaude session started from that directory or any subdirectory will use these settings.
@@ -290,6 +292,7 @@ dclaude walks up the directory tree to find `.dclaude` files. Any dclaude sessio
 | `DEBUG` | Enable debug output (`true`, `false`) |
 | `CHROME_PORT` | Chrome DevTools port |
 | `AWS_CLI` | AWS config mode (`mount`, `volume`, `none`) |
+| `CA_CERT` | Path to CA certificate for corporate SSL inspection (relative to config file, or absolute) |
 
 Config file variables are the unprefixed equivalents of `DCLAUDE_*` environment variables (e.g., `NAMESPACE` in `.dclaude` = `DCLAUDE_NAMESPACE` env var).
 
