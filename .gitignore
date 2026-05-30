@@ -26,6 +26,7 @@ yarn-error.log*
 # Claude local data
 .claude/
 *.claude.json
+.mcp.json
 
 # Credentials and secrets
 *.pem
