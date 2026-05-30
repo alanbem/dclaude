@@ -266,6 +266,7 @@ dclaude shell                     # Open a bash shell (alias for exec)
 | `DCLAUDE_TMUX_SESSION` | `claude-TIMESTAMP` | Custom tmux session name for concurrent sessions |
 | `DCLAUDE_ITERM2` | `true` | Enable iTerm2 shell integration (only affects iTerm2) |
 | `DCLAUDE_CA_CERT` | (none) | Path to CA certificate for corporate SSL inspection |
+| `DCLAUDE_DISABLE_AUTOUPDATER` | (Claude default) | Set to `1` to disable Claude Code's runtime auto-updater; unset uses Claude Code's default (auto-update enabled) |
 
 ## Configuration File
 
@@ -293,6 +294,7 @@ dclaude walks up the directory tree to find `.dclaude` files. Any dclaude sessio
 | `CHROME_PORT` | Chrome DevTools port |
 | `AWS_CLI` | AWS config mode (`mount`, `volume`, `none`) |
 | `CA_CERT` | Path to CA certificate for corporate SSL inspection (relative to config file, or absolute) |
+| `DISABLE_AUTOUPDATER` | Set to `1` to disable Claude Code's runtime auto-updater; omit to use Claude Code's default (auto-update enabled) |
 
 Config file variables are the unprefixed equivalents of `DCLAUDE_*` environment variables (e.g., `NAMESPACE` in `.dclaude` = `DCLAUDE_NAMESPACE` env var).
 

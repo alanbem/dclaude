@@ -150,6 +150,7 @@ dclaude supports a `.dclaude` config file that applies settings recursively to a
 - `MOUNT_ROOT` - Mount directory (relative to config file, or absolute path)
 - `AWS_CLI` - AWS config mode (`mount`, `volume`, `none`)
 - `CA_CERT` - Path to CA certificate for corporate SSL inspection (relative to config file, or absolute)
+- `DISABLE_AUTOUPDATER` - Pass `DISABLE_AUTOUPDATER` into the container to control Claude Code's auto-updater (unset = Claude Code's default, which is auto-update enabled)
 
 **Note:** Chrome profiles are stored in `.dclaude.d/` directory, keeping `.dclaude` available for the config file.
 
@@ -228,7 +229,7 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 - **Binary location**: `~/.local/bin/claude` (symlink to versioned installation)
 - **Data location**: `~/.local/share/claude/versions/<version>`
 - **Config location**: `CLAUDE_CONFIG_DIR=/home/claude/.claude` (points to mounted volume)
-- **Auto-updates disabled**: `DISABLE_AUTOUPDATER=1` environment variable prevents runtime updates
+- **Auto-updates**: Follows Claude Code's default (auto-update enabled). Disable per-project by setting `DCLAUDE_DISABLE_AUTOUPDATER=1` (env) or `DISABLE_AUTOUPDATER=1` (in `.dclaude`), which passes `DISABLE_AUTOUPDATER` into the container. Note: the binary lives in `~/.local` (not a persistent volume), so runtime updates last only for a persistent container's lifetime
 - **Version at build time**: Installs latest version when image is built
 - **SHA256 verification**: Native installer verifies checksums automatically
 

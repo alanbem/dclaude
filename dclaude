@@ -150,9 +150,16 @@ load_config_file() {
                         fi
                     fi
                     ;;
+                DISABLE_AUTOUPDATER)
+                    [[ -z "${DCLAUDE_DISABLE_AUTOUPDATER:-}" ]] && DCLAUDE_DISABLE_AUTOUPDATER="$value"
+                    ;;
             esac
         fi
     done < "$config_file"
+
+    # Under `set -e`, a short-circuited `&&`-style case branch (last line already
+    # overridden by an env var) would make this function return non-zero and abort dclaude.
+    return 0
 }
 
 # Load config file if found (must happen early, before readonly declarations)
@@ -172,6 +179,8 @@ if [[ -n "${DCLAUDE_CA_CERT:-}" && "${DCLAUDE_CA_CERT}" != /* ]]; then
     DCLAUDE_CA_CERT=$(realpath "$DCLAUDE_CA_CERT" 2>/dev/null) || DCLAUDE_CA_CERT="$PWD/$DCLAUDE_CA_CERT"
 fi
 readonly CA_CERT="${DCLAUDE_CA_CERT:-}"  # Path to CA certificate for corporate proxies
+# When set, passed into the container; unset defers to Claude Code's default (auto-update enabled)
+readonly DISABLE_AUTOUPDATER="${DCLAUDE_DISABLE_AUTOUPDATER:-}"
 
 # Show config file if loaded (always at info level, details at debug)
 if [[ -n "$DCLAUDE_CONFIG_FILE" ]]; then
@@ -184,6 +193,7 @@ if [[ -n "$DCLAUDE_CONFIG_FILE" ]]; then
         [[ -n "${DCLAUDE_MOUNT_ROOT:-}" ]] && debug "  MOUNT_ROOT=$DCLAUDE_MOUNT_ROOT"
         [[ -n "${DCLAUDE_AWS_CLI:-}" ]] && debug "  AWS_CLI=$DCLAUDE_AWS_CLI"
         [[ -n "$CA_CERT" ]] && debug "  CA_CERT=$CA_CERT"
+        [[ -n "$DISABLE_AUTOUPDATER" ]] && debug "  DISABLE_AUTOUPDATER=$DISABLE_AUTOUPDATER"
     fi
 fi
 
@@ -1952,6 +1962,11 @@ main() {
     # Add any additional environment variables
     if [[ -n "${CLAUDE_MODEL:-}" ]]; then
         DOCKER_ARGS+=(-e "CLAUDE_MODEL=${CLAUDE_MODEL}")
+    fi
+
+    # Control Claude Code's auto-updater; unset defers to its built-in default (enabled)
+    if [[ -n "$DISABLE_AUTOUPDATER" ]]; then
+        DOCKER_ARGS+=(-e "DISABLE_AUTOUPDATER=${DISABLE_AUTOUPDATER}")
     fi
 
     if [[ "$DEBUG" == "true" ]]; then
