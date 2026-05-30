@@ -132,7 +132,8 @@ RUN npm config set prefix /home/claude/.npm-global \
 
 # Install Claude CLI using native installer (recommended method)
 # Native installer downloads binary to ~/.local/bin/claude with SHA256 verification
-# Installs latest version at build time; DISABLE_AUTOUPDATER (below) prevents runtime updates
+# Installs latest version at build time; runtime auto-update follows Claude Code's
+# default and can be disabled per-project via dclaude's DCLAUDE_DISABLE_AUTOUPDATER
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
 # Create workspace and necessary directories with correct ownership
@@ -185,7 +186,6 @@ ENV CLAUDE_UNSAFE_TRUST_WORKSPACE=true \
     CLAUDE_EDIT_TIMEOUT=300000 \
     CLAUDE_WRITE_TIMEOUT=300000 \
     CLAUDE_WEBFETCH_TIMEOUT=300000 \
-    DISABLE_AUTOUPDATER=1 \
     TERM=xterm-256color \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
